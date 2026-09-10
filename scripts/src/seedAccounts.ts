@@ -82,7 +82,12 @@ async function ensureAuthUser(config: AccountConfig): Promise<string> {
 
 async function main() {
   const config = loadConfig();
-  initializeApp({ credential: applicationDefault() });
+  // Application Default Credentials don't reliably resolve which GCP project
+  // to target (they can silently fall back to an unrelated default project
+  // rather than the intended one), so the project must be named explicitly.
+  // Override with GOOGLE_CLOUD_PROJECT if seeding a different project.
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || "wbk-curriculum-8163d";
+  initializeApp({ credential: applicationDefault(), projectId });
   const db = getFirestore();
 
   console.log(`Seeding family "${config.familyName}" (${config.familyId})...`);
