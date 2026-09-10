@@ -14,7 +14,7 @@ import { getFunctions } from "firebase/functions";
  * -> SDK setup and configuration -> Config.
  */
 const firebaseConfig = {
-  apiKey: "AIzaSyAw3YN6VtXZ4u3W12-MrF_nG-I4rwsmuH8",
+  apiKey: "AIzaSyAw3YN6VtXZ4u3W12-MrP_nG-I4rwsmuH8",
   authDomain: "wbk-curriculum-8163d.firebaseapp.com",
   projectId: "wbk-curriculum-8163d",
   storageBucket: "wbk-curriculum-8163d.firebasestorage.app",
