@@ -14,6 +14,12 @@ service cloud.firestore {
     function isSameFamily(familyId) {
       return isSignedIn() && userDoc().data.familyId == familyId;
     }
+    // A teacher may act on a resource only within their own family — keeps
+    // one family's teacher from reading/writing another family's data even
+    // though every teacher account shares the same broad role.
+    function isTeacherInFamily(familyId) {
+      return isTeacher() && isSameFamily(familyId);
+    }
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -26,37 +32,42 @@ service cloud.firestore {
 
     match /families/{familyId} {
       allow read: if isSameFamily(familyId);
-      allow write: if isTeacher() && isSameFamily(familyId);
+      allow write: if isTeacherInFamily(familyId);
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isTeacher();
-      allow write: if isTeacher(); // only teachers create/edit profiles
+      allow read: if isOwner(userId) || isTeacherInFamily(resource.data.familyId);
+      allow create: if isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
 
     match /logs/{logId} {
-      allow read: if isOwner(resource.data.userId) || isTeacher();
-      allow create: if isOwnedByCallerInOwnFamily(request.resource.data) || isTeacher();
-      allow update, delete: if isTeacher();
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow create: if isOwnedByCallerInOwnFamily(request.resource.data)
+        || isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
 
     match /tests/{testId} {
-      allow read: if isOwner(resource.data.userId) || isTeacher();
-      allow create: if isOwnedByCallerInOwnFamily(request.resource.data) || isTeacher();
-      allow update, delete: if isTeacher();
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow create: if isOwnedByCallerInOwnFamily(request.resource.data)
+        || isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
 
     match /uploads/{uploadId} {
       allow read: if isSameFamily(resource.data.familyId);
-      allow write: if isTeacher();
+      allow create: if isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
 
     // Ingestion flow (drop-in text -> Claude parse -> teacher review/confirm)
     // runs entirely through teacher-invoked Cloud Functions, so client
     // writes to this collection are teacher-only, matching uploads/.
     match /extracurriculars/{recordId} {
-      allow read: if isOwner(resource.data.userId) || isTeacher();
-      allow write: if isTeacher();
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow create: if isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
   }
 }

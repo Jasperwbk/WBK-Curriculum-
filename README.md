@@ -1,13 +1,18 @@
-# WBK Homeschool Ecosystem — Phase 1 (Backend Foundation)
+# WBK Homeschool Ecosystem
 
-Firebase backend for a private, family-only homeschool tracker: accounts,
-permissions, file uploads, hour/test logging, and the data model behind the
-teacher dashboard. No curriculum generation, app integration, or offline
-sync — those are later phases.
+Private, family-only homeschool tracker: accounts, permissions, file uploads,
+hour/test logging, the pace/banking dashboard, and — now — a first web
+frontend for the teacher view (log an activity, see the pace gauges). No
+curriculum generation, sibling app integration (Rhoe Field Scout, etc.), the
+student's own view, or offline sync yet — those are later phases.
 
-Stack: Firebase Auth + Firestore + Storage, with Cloud Functions (TypeScript)
-for the logic that shouldn't live on the client: dashboard pace/banking
-calculations and the extracurricular text-ingestion flow.
+Stack: Firebase Auth + Firestore + Storage, Cloud Functions (TypeScript) for
+logic that shouldn't live on the client (dashboard pace/banking calculations,
+the extracurricular text-ingestion flow), and a React + Vite web app for the
+teacher UI. The web app is deliberately built against nothing but the shared
+Firebase backend/auth (no web-only shortcuts) so an Android app can be added
+later against the exact same accounts and data, per the long-term "one
+account, kept in sync across apps" goal.
 
 ## Layout
 
@@ -33,6 +38,12 @@ functions/                Cloud Functions (deployed)
 scripts/                  One-off admin scripts (run locally, not deployed)
   src/seedAccounts.ts       Creates the 5 manually-provisioned accounts
   accounts.config.example.json   Template — copy to accounts.config.json (gitignored)
+
+web/                      React + Vite teacher web app (deployed to Firebase Hosting)
+  src/lib/firebase.ts       Client SDK init — needs the real Web SDK config filled in
+  src/context/AuthContext.tsx  Signed-in user + their users/{uid} profile/role
+  src/pages/                Login, teacher dashboard, log-activity form, student placeholder
+  src/components/Gauge.tsx   Pace/banking meter (dataviz-skill status palette)
 ```
 
 ## Data model
@@ -149,6 +160,53 @@ Two callables implement the human-in-the-loop flow from the spec:
 Requires an `ANTHROPIC_API_KEY` secret (Firebase Functions v2 secret param —
 set with `firebase functions:secrets:set ANTHROPIC_API_KEY`).
 
+## Web app (teacher view)
+
+`web/` is a React + Vite app covering, for now, the teacher-facing side only:
+sign in, pick a student, see their pace gauges (total/core/home-core + a
+per-subject breakdown), and log an activity. Students, the extracurricular
+ingestion UI, and the sibling subject apps (Rhoe Field Scout, future
+apps) are intentionally not wired in yet.
+
+It talks to Firebase the same way any client would: Firebase Auth for
+sign-in, direct Firestore reads (governed by `firestore.rules`) for the
+family/student list, and the `getDashboardData` callable for the gauges. An
+Android app can be built later against the exact same accounts, rules, and
+functions — nothing here is web-specific.
+
+### One-time setup: the Web SDK config
+
+`src/lib/firebase.ts` needs your project's client-side config (this is not a
+secret — it's fine to commit; security comes from the Firestore/Storage rules
+and Cloud Functions auth checks, not from hiding this object). Get it with:
+
+```bash
+firebase apps:create WEB "WBK Homeschool Web"   # first time only
+firebase apps:sdkconfig WEB
+```
+
+Copy the printed `apiKey`, `messagingSenderId`, and `appId` into the
+`firebaseConfig` object in `src/lib/firebase.ts` (the other fields are
+already filled in for this project).
+
+### Running locally
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+### Deploying to Firebase Hosting
+
+```bash
+firebase deploy --only hosting
+```
+
+(`firebase.json`'s hosting config runs `npm install`/`npm run build` inside
+`web/` automatically before deploying, so a plain `npm run build` isn't a
+separate step.)
+
 ## Deploying
 
 ```bash
@@ -156,7 +214,7 @@ npm install -g firebase-tools   # if not already installed
 firebase login
 # update .firebaserc's "default" project id to your actual Firebase project
 firebase functions:secrets:set ANTHROPIC_API_KEY
-firebase deploy --only firestore:rules,firestore:indexes,storage:rules,functions
+firebase deploy --only firestore:rules,firestore:indexes,storage:rules,functions,hosting
 ```
 
 Local development: `cd functions && npm run serve` runs the Auth, Firestore,
@@ -164,7 +222,10 @@ Storage, and Functions emulators together (see `firebase.json`).
 
 ## What's deliberately deferred
 
-Per spec section 5 — curriculum content generation, portal UI polish beyond
-the dashboard, app-tagging/context-aware lesson routing, sibling teamwork
-logic, and offline download/sync are all later phases, not part of this
-backend foundation.
+Per spec section 5 — curriculum content generation, app-tagging/context-aware
+lesson routing, sibling teamwork logic, and offline download/sync are all
+later phases. On the frontend specifically: the student's own view, the
+extracurricular ingestion UI (`parseExtracurricular`/`confirmExtracurricular`
+have no screen yet — teacher-entered `logs` only, for now), wiring in the
+sibling subject apps (Rhoe Field Scout, future apps), and the Android app are
+all intentionally not built yet.
