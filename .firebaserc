@@ -1,5 +1,12 @@
 {
   "projects": {
     "default": "wbk-curriculum-8163d"
+  },
+  "targets": {
+    "wbk-curriculum-8163d": {
+      "hosting": {
+        "web": ["wbkschool"]
+      }
+    }
   }
 }
