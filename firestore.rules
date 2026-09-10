@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function isTeacher() {
+      return isSignedIn() && userDoc().data.role == "teacher";
+    }
+    function isSameFamily(familyId) {
+      return isSignedIn() && userDoc().data.familyId == familyId;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    // A student may only create records that belong to both themself and
+    // their own family — prevents a student from writing another child's
+    // data or spoofing a familyId that isn't theirs.
+    function isOwnedByCallerInOwnFamily(data) {
+      return isOwner(data.userId) && isSameFamily(data.familyId);
+    }
+
+    match /families/{familyId} {
+      allow read: if isSameFamily(familyId);
+      allow write: if isTeacher() && isSameFamily(familyId);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isTeacher();
+      allow write: if isTeacher(); // only teachers create/edit profiles
+    }
+
+    match /logs/{logId} {
+      allow read: if isOwner(resource.data.userId) || isTeacher();
+      allow create: if isOwnedByCallerInOwnFamily(request.resource.data) || isTeacher();
+      allow update, delete: if isTeacher();
+    }
+
+    match /tests/{testId} {
+      allow read: if isOwner(resource.data.userId) || isTeacher();
+      allow create: if isOwnedByCallerInOwnFamily(request.resource.data) || isTeacher();
+      allow update, delete: if isTeacher();
+    }
+
+    match /uploads/{uploadId} {
+      allow read: if isSameFamily(resource.data.familyId);
+      allow write: if isTeacher();
+    }
+
+    // Ingestion flow (drop-in text -> Claude parse -> teacher review/confirm)
+    // runs entirely through teacher-invoked Cloud Functions, so client
+    // writes to this collection are teacher-only, matching uploads/.
+    match /extracurriculars/{recordId} {
+      allow read: if isOwner(resource.data.userId) || isTeacher();
+      allow write: if isTeacher();
+    }
+  }
+}

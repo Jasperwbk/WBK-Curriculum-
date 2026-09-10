@@ -1,0 +1,20 @@
+node_modules/
+lib/
+dist/
+*.log
+.DS_Store
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*-debug.log
+
+# Secrets — never commit service account keys or API keys
+serviceAccountKey.json
+*.serviceaccount.json
+.env
+.env.*
+!.env.example
+scripts/accounts.config.json

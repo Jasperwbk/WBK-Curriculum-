@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+    function isTeacher() {
+      return isSignedIn() && userDoc().data.role == "teacher";
+    }
+    function isSameFamily(familyId) {
+      return isSignedIn() && userDoc().data.familyId == familyId;
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Teacher-only document library: uploads/{familyId}/{fileName}
+    match /uploads/{familyId}/{fileName} {
+      allow read: if isSameFamily(familyId);
+      allow write: if isTeacher() && isSameFamily(familyId);
+    }
+
+    // Raw dropped-in text files for the extracurricular ingestion flow:
+    // extracurriculars/{familyId}/{fileName} — teacher-only, same as uploads/.
+    match /extracurriculars/{familyId}/{fileName} {
+      allow read: if isSameFamily(familyId);
+      allow write: if isTeacher() && isSameFamily(familyId);
+    }
+
+    // Handwritten test images: tests/{familyId}/{userId}/{fileName}
+    // A student may upload their own scanned test; a teacher may upload for anyone in-family.
+    match /tests/{familyId}/{userId}/{fileName} {
+      allow read: if isSameFamily(familyId);
+      allow write: if isSameFamily(familyId) && (isOwner(userId) || isTeacher());
+    }
+  }
+}

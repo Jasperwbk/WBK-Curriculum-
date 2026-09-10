@@ -1,0 +1,53 @@
+{
+  "familyId": "wbk-family",
+  "familyName": "The Family",
+  "schoolYear": {
+    "startDate": "2026-09-01",
+    "yearLengthDays": 365,
+    "totalHoursTarget": 1000,
+    "coreHoursTarget": 600,
+    "homeCoreHoursTarget": 400
+  },
+  "accounts": [
+    {
+      "email": "teacher1@example.com",
+      "password": "REPLACE-WITH-A-STRONG-TEMP-PASSWORD",
+      "displayName": "Teacher One",
+      "role": "teacher",
+      "characterMapping": null,
+      "gradeLabel": null
+    },
+    {
+      "email": "teacher2@example.com",
+      "password": "REPLACE-WITH-A-STRONG-TEMP-PASSWORD",
+      "displayName": "Teacher Two",
+      "role": "teacher",
+      "characterMapping": null,
+      "gradeLabel": null
+    },
+    {
+      "email": "student1@example.com",
+      "password": "REPLACE-WITH-A-STRONG-TEMP-PASSWORD",
+      "displayName": "Student One",
+      "role": "student",
+      "characterMapping": "Kira",
+      "gradeLabel": "5th grade"
+    },
+    {
+      "email": "student2@example.com",
+      "password": "REPLACE-WITH-A-STRONG-TEMP-PASSWORD",
+      "displayName": "Student Two",
+      "role": "student",
+      "characterMapping": "Rhoe",
+      "gradeLabel": "3rd grade"
+    },
+    {
+      "email": "student3@example.com",
+      "password": "REPLACE-WITH-A-STRONG-TEMP-PASSWORD",
+      "displayName": "Student Three",
+      "role": "student",
+      "characterMapping": "Nova",
+      "gradeLabel": "1st grade"
+    }
+  ]
+}
