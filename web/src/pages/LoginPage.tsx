@@ -14,8 +14,9 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await signIn(email, password);
-    } catch {
-      setError("Couldn't sign in. Check your email and password.");
+    } catch (err) {
+      const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : null;
+      setError(code ? `Couldn't sign in (${code}).` : "Couldn't sign in. Check your email and password.");
     } finally {
       setSubmitting(false);
     }
