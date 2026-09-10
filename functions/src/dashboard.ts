@@ -10,6 +10,7 @@ import {
   type UserProfile,
 } from "./types";
 import { requireCaller, requireOwnerOrTeacher, requireSameFamily } from "./util/auth";
+import { computeSubjectWeights } from "./curriculum/subjectWeights";
 
 export type GaugeStatus = "green" | "yellow" | "red";
 
@@ -116,11 +117,14 @@ export interface DashboardData {
  *
  * The spec's family schema only defines targets for the total/core/home-core
  * buckets, not per individual subject. To still give each subject its own
- * pace gauge (per spec section 4), this evenly splits the relevant parent
- * bucket's target across the subjects that roll into it: coreHoursTarget /
- * 4 core subjects, and (totalHoursTarget - coreHoursTarget) / 4 specialty
- * subjects. Revisit this split if a non-even per-subject weighting is
- * wanted later.
+ * pace gauge (per spec section 4) without an arbitrary even split, each
+ * subject's annual target is its real curriculum weight (computeSubjectWeights,
+ * derived from the actual weekly hours assigned per subject across the Q1
+ * curriculum files — reading/language arts, math, science, and social studies
+ * are weighted higher than the specialty subjects because that's what the
+ * curriculum actually assigns) times its bucket's annual target
+ * (coreHoursTarget for core subjects, totalHoursTarget - coreHoursTarget for
+ * specialty subjects).
  */
 export async function computeDashboardData(
   familyId: string,
@@ -155,14 +159,17 @@ export async function computeDashboardData(
     homeCoreActual
   );
 
-  const perCoreTarget = schoolYear.coreHoursTarget / CORE_SUBJECTS.length;
-  const perSpecialtyTarget =
-    Math.max(schoolYear.totalHoursTarget - schoolYear.coreHoursTarget, 0) / SPECIALTY_SUBJECTS.length;
+  const subjectWeights = computeSubjectWeights();
+  const specialtyBucketTarget = Math.max(
+    schoolYear.totalHoursTarget - schoolYear.coreHoursTarget,
+    0
+  );
 
   const subjectEntries = await Promise.all(
     [...CORE_SUBJECTS, ...SPECIALTY_SUBJECTS].map(async (subject) => {
       const isCore = (CORE_SUBJECTS as readonly string[]).includes(subject);
-      const target = isCore ? perCoreTarget : perSpecialtyTarget;
+      const bucketTarget = isCore ? schoolYear.coreHoursTarget : specialtyBucketTarget;
+      const target = subjectWeights[subject] * bucketTarget;
       const actual = await getActualHoursToDate(familyId, targetUserId, today, {
         subjects: [subject],
       });

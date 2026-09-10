@@ -17,9 +17,15 @@ firestore.indexes.json   Composite indexes the dashboard queries need
 storage.rules             Storage security rules (uploads/, extracurriculars/, tests/)
 firebase.json / .firebaserc
 
+curriculum/                Q1 (Fall) curriculum source files (real content, not
+                             generated) — the source of truth for per-subject
+                             dashboard weighting; see functions/src/curriculum/
+
 functions/                Cloud Functions (deployed)
   src/types.ts             Firestore schema as TypeScript types
   src/subjects.ts           Standardized subject lists + core/specialty lookup
+  src/curriculum/           Weekly per-subject hours (transcribed from curriculum/)
+                             + the weight-derivation function dashboard.ts uses
   src/dashboard.ts           Pace/banking calculation logic + getDashboardData callable
   src/extracurriculars.ts    parseExtracurricular / confirmExtracurricular callables
   src/util/auth.ts            Role/family guard helpers shared by every callable
@@ -105,16 +111,24 @@ editing the config (e.g. to add a 6th account later).
 The `getDashboardData` callable runs this once each for total hours, core
 hours, home-core hours, and every individual subject, for one student.
 
-**One assumption worth flagging:** the spec's `families/{familyId}` schema
-only defines targets for the *total*, *core*, and *home-core* buckets — not
-per-subject targets — but section 4 asks for a pace gauge on every
-individual subject too. Since there's no explicit per-subject number to
-pace against, `computeDashboardData` evenly splits the parent bucket's
-target across the subjects that roll into it (`coreHoursTarget / 4` for
-each core subject, `(totalHoursTarget - coreHoursTarget) / 4` for each
-specialty subject). That's a reasonable default, not a spec requirement —
-swap in real per-subject weights in `dashboard.ts` if an even split isn't
-what's wanted.
+**Per-subject targets are curriculum-weighted, not an even split.** The
+spec's `families/{familyId}` schema only defines targets for the *total*,
+*core*, and *home-core* buckets — not per-subject targets — but section 4
+asks for a pace gauge on every individual subject too. `functions/src/
+curriculum/weeklyHours.ts` transcribes the actual weekly "Hrs" column from
+the Q1 curriculum files in `curriculum/q1_fall/` (identical for Millaray
+and Makaio: reading/language arts runs 5 hrs/week vs. 4 for math/science/
+social studies, and the specialty subjects run 3/3/3/2). `computeSubject
+Weights()` in `functions/src/curriculum/subjectWeights.ts` sums those
+hours across every recorded week and turns them into each subject's share
+of its bucket's total curriculum hours; `computeDashboardData` multiplies
+that share by the bucket's annual target (`coreHoursTarget` for core
+subjects, `totalHoursTarget - coreHoursTarget` for specialty subjects) to
+get each subject's annual pace target. Maizley (the toddler) has no hour
+data in her Q1 file and no legal hour requirement, so she isn't part of
+this weighting. As later quarters' curriculum files are written, add their
+weekly hours to `weeklyHours.ts` and the derived weights update
+automatically.
 
 ## Extracurricular ingestion flow
 
