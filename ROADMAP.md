@@ -43,6 +43,21 @@ collection added in this session — `dayPlans` is one teacher-drafted day at
 a time with no memory of prior days; this is about an eventual generation
 engine that chains days together.
 
+**Why the day-or-two-ahead window matters (clarified after this was first
+written down):** the whole point of the teacher seeing a day's content
+before it reaches the kids is so she can review it properly — read the
+teacher's notes, adjust or completely rewrite it if needed, and explicitly
+approve or reject it before it goes out. Today's `dayPlans` flow already
+satisfies this in spirit because the teacher is the one generating and
+saving it by hand — there's no separate approval step because she's the
+author. But once the real generator exists and starts producing days
+automatically (rather than the teacher prompting it for a specific day),
+it will need an actual review gate — something like a
+draft/pending-review/approved-or-rejected state, not just save-equals-publish
+— so the teacher keeps a real thumbs-up/thumbs-down before anything reaches
+a student, even when she didn't personally write the prompt that generated
+it.
+
 ## 3. Quarterly export / portfolio archive
 
 On each new quarterly curriculum update, automatically zip and export, per
@@ -96,6 +111,42 @@ per test. Genuine per-skill adaptive feedback will need something more
 granular than that — per-question or per-objective results tagged to a
 skill, not just an overall score — so the test schema will likely need to
 grow before this can work, not just the generator.
+
+## 5. Mostly-physical output, cursive as a priority
+
+Digital should be the *guidance* layer — like a teacher presenting slides —
+not where the actual work happens. When the generator produces a day's
+content, it needs to produce real printable worksheets the kids do by hand,
+not just on-screen text. Specific priorities called out:
+- **Cursive fluency is an explicit goal**, not incidental handwriting
+  practice — the family wants the kids to actually become fluent in
+  cursive, so printable content should build toward that deliberately.
+- **Calligraphy** is a planned skill for later, as they get older (the
+  family already has calligraphy kits) — not needed now, but worth knowing
+  the physical-writing thread is meant to extend that far.
+- The actual practice/work should be **mostly physical (printed
+  worksheets) or interactive through the family's own apps** — named
+  explicitly: Nova, Kira, and Rhoe (the existing/planned per-kid subject
+  apps — Rhoe Field Scout is already live per the original spec), plus
+  "WBK Survival," also called "Code Green." Digital screens in the
+  curriculum itself should stay in the instructional/guidance role, not
+  become the medium the kids actually work in.
+
+This has real implications for whatever generates curriculum content later:
+it can't just emit text for a screen — it needs an actual printable-document
+output (PDF worksheets), and cursive/handwriting practice should be a
+recognized category of that output, not an afterthought.
+
+## 6. Embedding video / third-party links in curriculum content
+
+Open idea, mechanism not decided: the family wants a way to work videos
+and/or third-party links into curriculum content as interactive/clickable
+elements — whether that's the teacher including them when building/
+uploading curriculum on the back end, or some other integration path.
+Flagged explicitly as a "just a note, don't know how yet" item — needs real
+design thought whenever it's picked up (how such a link gets attached to a
+unit/objective, how it renders in the student view, whether it's teacher-
+supplied only or something the generator can also suggest).
 
 ## Sequencing
 
