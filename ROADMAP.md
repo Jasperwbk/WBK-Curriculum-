@@ -56,6 +56,29 @@ a zip/export mechanism (a Cloud Function triggered manually or on a
 quarter-boundary seems natural), and a delivery method (download link,
 email, a Storage bucket the teacher can browse).
 
+Two more pieces added to this idea since it was first written down:
+
+- **A designated destination folder the teacher picks once, not every
+  time.** The app should let the teacher choose a folder (once — with a way
+  to change it later), remember that choice, and have every future
+  quarterly export land there automatically without re-picking a
+  destination each quarter. Open design question for whenever this gets
+  built: "folder" could mean a folder on the teacher's own device (the
+  browser's File System Access API can remember a directory handle, but
+  that's local to one device/browser profile) or a folder in a connected
+  cloud drive (e.g. Google Drive, reachable from any device — fits better
+  given the whole point of this app is one account working across web and
+  the future Android app). Leaning cloud-folder for that reason, but not
+  decided.
+- **A "view previous quarterlies" screen** that goes back to that same
+  destination and lists past exports so they can be pulled up again later
+  — explicitly called out as important for a homeschool audit, where being
+  able to produce prior transcripts on demand matters. At minimum this
+  means keeping a record (probably a Firestore doc per export: which
+  quarter, which student(s), when it was created, and where it landed) even
+  if the files themselves live in the external folder rather than in
+  Firebase Storage.
+
 ## 4. Adaptive assessment feeding the daily generator
 
 Weekly/biweekly tests should include specific questions that double as an
