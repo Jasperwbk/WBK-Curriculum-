@@ -241,6 +241,21 @@ firebase deploy --only firestore:rules,firestore:indexes,storage:rules,functions
 Local development: `cd functions && npm run serve` runs the Auth, Firestore,
 Storage, and Functions emulators together (see `firebase.json`).
 
+## Known gaps noted during real use (not yet built)
+
+- **Dashboard gauges aren't clickable.** Tapping a gauge (the three at the
+  top, or any per-subject one) does nothing right now — each just shows one
+  student's own actual-vs-expected number. What's wanted: tapping through to
+  a detail view that compares all siblings side-by-side on that same metric
+  (e.g. tap "Core hours" and see Millaray/Makaio/Maizely's core-hour pace
+  next to each other, not just one at a time via the dropdown).
+- **No way to view — or even create — extracurricular records from the web
+  app.** `parseExtracurricular`/`confirmExtracurricular` exist and work as
+  Cloud Functions, but there's no screen that calls them, so there's
+  currently no way to log an extracurricular (tutoring, a class, an award)
+  or browse past ones through the UI at all — this needs both an input flow
+  and a list/detail view, not just the view half.
+
 ## What's deliberately deferred
 
 Per spec section 5 — curriculum content generation, app-tagging/context-aware
