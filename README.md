@@ -160,13 +160,34 @@ Two callables implement the human-in-the-loop flow from the spec:
 Requires an `ANTHROPIC_API_KEY` secret (Firebase Functions v2 secret param —
 set with `firebase functions:secrets:set ANTHROPIC_API_KEY`).
 
+## Day plans (AI-drafted, teacher-reviewed)
+
+`generatePlan` (`functions/src/dayPlans.ts`) takes the teacher's free-text
+description of an upcoming day — an ordinary school day, or something like
+"Friday we're camping at X, light on the education, more on fun" — and asks
+Claude for a draft title/summary/plan text calibrated to that description
+(a field-trip day comes back short and playful; a request for a focused day
+comes back fuller). Nothing is written to Firestore by the callable itself;
+the teacher reviews/edits the draft in the web app's "Plan a day" screen and
+saves it themselves, which is what actually creates the `dayPlans/{planId}`
+doc — same human-in-the-loop shape as the extracurricular ingestion flow.
+
+`dayPlans` docs are always visible to a teacher in the same family, but a
+student can only read one that names them once its `date` has arrived —
+enforced in `firestore.rules`, not just the UI — matching the "teacher gets
+it a day ahead, student gets it day-of" requirement. The student-facing
+screen that would actually show this to a student doesn't exist yet (the
+student view overall is still a placeholder), so today this only gives the
+teacher a place to draft and store the plan.
+
 ## Web app (teacher view)
 
 `web/` is a React + Vite app covering, for now, the teacher-facing side only:
 sign in, pick a student, see their pace gauges (total/core/home-core + a
-per-subject breakdown), and log an activity. Students, the extracurricular
-ingestion UI, and the sibling subject apps (Rhoe Field Scout, future
-apps) are intentionally not wired in yet.
+per-subject breakdown), log an activity (with edit/delete on recent
+entries), and draft/save day plans. Students, the extracurricular ingestion
+UI, and the sibling subject apps (Rhoe Field Scout, future apps) are
+intentionally not wired in yet.
 
 It talks to Firebase the same way any client would: Firebase Auth for
 sign-in, direct Firestore reads (governed by `firestore.rules`) for the

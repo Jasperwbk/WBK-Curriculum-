@@ -69,5 +69,19 @@ service cloud.firestore {
       allow create: if isTeacherInFamily(request.resource.data.familyId);
       allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
+
+    // Day plans (AI-drafted via the generatePlan callable, teacher-reviewed,
+    // then saved directly by the client like logs/tests). A teacher can see
+    // every plan in their family at any time; a student can only see a plan
+    // that names them once its date has arrived — never a day ahead, per the
+    // "teacher gets it a day ahead, student gets it day-of" requirement.
+    match /dayPlans/{planId} {
+      allow read: if isTeacherInFamily(resource.data.familyId)
+        || (isSignedIn()
+            && resource.data.studentIds.hasAny([request.auth.uid])
+            && resource.data.date <= request.time);
+      allow create: if isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
+    }
   }
 }

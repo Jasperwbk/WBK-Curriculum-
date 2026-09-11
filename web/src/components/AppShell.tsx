@@ -40,6 +40,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               Log activity
             </NavLink>
+            <NavLink
+              to="/plan"
+              className={navLinkClass}
+              style={({ isActive }) => ({
+                background: isActive ? "var(--series-1)" : "transparent",
+                color: isActive ? "#ffffff" : "var(--text-secondary)",
+              })}
+            >
+              Plan a day
+            </NavLink>
           </nav>
         </div>
         <div className="flex items-center gap-3 text-sm">

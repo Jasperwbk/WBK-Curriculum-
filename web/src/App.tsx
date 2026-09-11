@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { TeacherDashboardPage } from "./pages/TeacherDashboardPage";
 import { LogActivityPage } from "./pages/LogActivityPage";
+import { PlanDayPage } from "./pages/PlanDayPage";
 import { StudentPlaceholderPage } from "./pages/StudentPlaceholderPage";
 
 function Gate() {
@@ -36,6 +37,7 @@ function Gate() {
     <Routes>
       <Route path="/" element={<TeacherDashboardPage />} />
       <Route path="/log" element={<LogActivityPage />} />
+      <Route path="/plan" element={<PlanDayPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

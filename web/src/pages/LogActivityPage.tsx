@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { addDoc, collection, Timestamp } from "firebase/firestore";
+import { useEffect, useState, type FormEvent } from "react";
+import { addDoc, collection, deleteDoc, doc, Timestamp, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
+import { useRecentLogs, type LogEntry } from "../hooks/useRecentLogs";
 import { AppShell } from "../components/AppShell";
 import {
   CORE_SUBJECTS,
@@ -11,6 +12,7 @@ import {
   subjectLabel,
   LOCATION_LABELS,
   type Location,
+  type Subject,
 } from "../lib/subjects";
 
 function todayIso(): string {
@@ -22,15 +24,51 @@ export function LogActivityPage() {
   const { students, loading: loadingStudents } = useFamilyStudents();
 
   const [studentId, setStudentId] = useState("");
-  const [subject, setSubject] = useState(CORE_SUBJECTS[0]);
+  const [subject, setSubject] = useState<Subject>(CORE_SUBJECTS[0]);
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [location, setLocation] = useState<Location>("home");
   const [date, setDate] = useState(todayIso());
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState(0);
 
   const activeStudentId = studentId || students[0]?.uid || "";
+  const { logs, loading: loadingLogs } = useRecentLogs(activeStudentId);
+
+  // Switching students while mid-edit would silently edit the wrong kid's
+  // entry, so drop back to "new entry" mode whenever the student changes.
+  useEffect(() => {
+    resetForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStudentId]);
+
+  function resetForm() {
+    setEditingId(null);
+    setSubject(CORE_SUBJECTS[0]);
+    setDurationMinutes(30);
+    setLocation("home");
+    setDate(todayIso());
+  }
+
+  function startEdit(log: LogEntry) {
+    setEditingId(log.id);
+    setSubject(log.subject);
+    setDurationMinutes(log.durationMinutes);
+    setLocation(log.location);
+    setDate(log.date.toDate().toISOString().slice(0, 10));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleDelete(logId: string) {
+    if (!confirm("Delete this entry? This can't be undone.")) return;
+    try {
+      await deleteDoc(doc(db, "logs", logId));
+      if (editingId === logId) resetForm();
+    } catch {
+      setError("Couldn't delete that entry. Try again.");
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -38,7 +76,7 @@ export function LogActivityPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await addDoc(collection(db, "logs"), {
+      const data = {
         familyId: profile.familyId,
         userId: activeStudentId,
         date: Timestamp.fromDate(new Date(date)),
@@ -47,9 +85,14 @@ export function LogActivityPage() {
         durationMinutes,
         location,
         source: "curriculum",
-      });
+      };
+      if (editingId) {
+        await updateDoc(doc(db, "logs", editingId), data);
+      } else {
+        await addDoc(collection(db, "logs"), data);
+      }
       setSuccessCount((n) => n + 1);
-      setDurationMinutes(30);
+      resetForm();
     } catch {
       setError("Couldn't save that entry. Try again.");
     } finally {
@@ -61,7 +104,7 @@ export function LogActivityPage() {
     <AppShell>
       <div className="max-w-md space-y-4">
         <h1 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-          Log an activity
+          {editingId ? "Edit activity" : "Log an activity"}
         </h1>
 
         {loadingStudents && (
@@ -87,7 +130,8 @@ export function LogActivityPage() {
               <select
                 value={activeStudentId}
                 onChange={(e) => setStudentId(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm"
+                disabled={!!editingId}
+                className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-60"
                 style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--page)" }}
               >
                 {students.map((s) => (
@@ -129,13 +173,16 @@ export function LogActivityPage() {
               <input
                 type="number"
                 min={1}
-                step={5}
+                step={1}
                 required
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(Number(e.target.value))}
                 className="w-full rounded-md border px-3 py-2 text-sm"
                 style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--page)" }}
               />
+              <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
+                Total minutes spent, e.g. 30 for a half hour, 90 for an hour and a half.
+              </span>
             </label>
 
             <label className="block text-sm space-y-1">
@@ -171,22 +218,87 @@ export function LogActivityPage() {
                 {error}
               </p>
             )}
-            {successCount > 0 && !error && (
+            {successCount > 0 && !error && !editingId && (
               <p className="text-sm">
                 <span style={{ color: "var(--status-good)" }}>●</span>{" "}
                 <span style={{ color: "var(--text-secondary)" }}>Saved. Log another below if you'd like.</span>
               </p>
             )}
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-              style={{ background: "var(--series-1)" }}
-            >
-              {submitting ? "Saving..." : "Save entry"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                style={{ background: "var(--series-1)" }}
+              >
+                {submitting ? "Saving..." : editingId ? "Update entry" : "Save entry"}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-md border px-3 py-2 text-sm font-medium"
+                  style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </form>
+        )}
+
+        {!loadingStudents && students.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium mb-2" style={{ color: "var(--text-secondary)" }}>
+              Recent activity
+            </h2>
+            {loadingLogs && (
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                Loading...
+              </p>
+            )}
+            {!loadingLogs && logs.length === 0 && (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                No entries logged yet for this student.
+              </p>
+            )}
+            {!loadingLogs && logs.length > 0 && (
+              <ul className="space-y-2">
+                {logs.map((log) => (
+                  <li
+                    key={log.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                    style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
+                  >
+                    <div>
+                      <div style={{ color: "var(--text-primary)" }}>{subjectLabel(log.subject)}</div>
+                      <div style={{ color: "var(--text-muted)" }}>
+                        {log.date.toDate().toLocaleDateString()} · {log.durationMinutes} min ·{" "}
+                        {LOCATION_LABELS[log.location]}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => startEdit(log)}
+                        className="rounded-md border px-2 py-1 text-xs font-medium"
+                        style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(log.id)}
+                        className="rounded-md border px-2 py-1 text-xs font-medium"
+                        style={{ borderColor: "var(--border)", color: "var(--status-critical)" }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </AppShell>
