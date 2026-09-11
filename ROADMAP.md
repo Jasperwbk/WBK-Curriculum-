@@ -112,6 +112,28 @@ granular than that — per-question or per-objective results tagged to a
 skill, not just an overall score — so the test schema will likely need to
 grow before this can work, not just the generator.
 
+**Plan changed on the starting point specifically:** rather than waiting on
+an external assessment upload to seed `assessmentBaseline` (the original
+plan), each kid will take an **in-app initial placement test** — grade-level
+basics across all standardized subjects, a random/varied question mix, and
+dedicated critical-thinking questions, not just subject recall. The family
+is building the actual question content in the separate curriculum builder
+(see `curriculum/generator_requirements.md` §6); what's needed on the build
+side is a way to ingest that content and score it into
+`assessmentBaseline` directly. Same underlying schema-granularity issue as
+above applies here too — and it's an open question whether this placement
+test is its own new thing or an extension of `tests/{testId}`, since a
+one-time/per-quarter placement test is different in kind from a routine
+weekly/biweekly test.
+
+## 4b. Daily routine: Pledge of Allegiance
+
+New, small, but explicit: the Pledge of Allegiance should open every school
+day as a fixed routine element, not tied to any one subject — the same way
+`spiritual_cultural` content already carries family rituals (harvest blót,
+Winter Nights) elsewhere in the Q1 curriculum. Whatever ends up generating
+or structuring a day needs to treat this as a standing first step.
+
 ## 5. Mostly-physical output, cursive as a priority
 
 Digital should be the *guidance* layer — like a teacher presenting slides —

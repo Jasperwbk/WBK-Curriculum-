@@ -83,9 +83,37 @@ links per unit (see `ROADMAP.md` §6 — mechanism still undecided), a
 `field_app:`, would be the simplest way to carry that through once the
 embedding mechanism itself gets designed. Not needed to start building.
 
+## 6. Initial placement test content (replaces the old "wait for an upload" plan)
+
+Revised plan, superseding the original assumption that `assessmentBaseline`
+would just show up as an external upload: build an **in-app initial
+placement test** each kid takes, covering:
+- Grade-level basics across all the standardized subjects (core and
+  specialty)
+- A mix of random/varied questions, not a fixed predictable set
+- Critical-thinking assessment questions specifically, not just
+  subject-recall
+
+The family is building the actual question content for this themselves in
+the separate curriculum builder — what's needed here is the content
+(questions, correct answers/rubric, and which subject/skill each question
+targets) in a format the app can ingest, so results can populate
+`assessmentBaseline` directly instead of a teacher hand-typing it from a
+separate document. Where this fits in the existing build isn't decided yet
+(closest existing concept is `tests/{testId}`, but a placement test is
+different in kind from a routine weekly/biweekly test) — flagged in
+`ROADMAP.md` too.
+
+## 7. Daily routine: Pledge of Allegiance
+
+New requirement: the Pledge of Allegiance should open every school day —
+a fixed routine element at the very start, not tied to a specific subject.
+Whatever ends up generating/structuring a day's content needs to treat this
+as a standing first step, the same way `spiritual_cultural` content already
+carries family rituals (the harvest blót, Winter Nights) elsewhere in the
+Q1 curriculum.
+
 ## Not needed yet
 
-- **Assessment results.** Explicitly deferred — will arrive later as an
-  upload once testing happens. The generator should be built so that
-  filling in `assessmentBaseline` per student later refines its output,
-  not so it's blocked without that data now.
+Nothing currently deferred — assessments are now planned as the in-app
+placement test above rather than an external upload to wait on.
