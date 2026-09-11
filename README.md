@@ -265,3 +265,8 @@ extracurricular ingestion UI (`parseExtracurricular`/`confirmExtracurricular`
 have no screen yet — teacher-entered `logs` only, for now), wiring in the
 sibling subject apps (Rhoe Field Scout, future apps), and the Android app are
 all intentionally not built yet.
+
+See `ROADMAP.md` for further-out ideas captured from family conversations
+(categorized file uploads, daily-plan continuity, quarterly portfolio
+export, adaptive assessment) that aren't scheduled yet — recorded so they
+aren't lost, not a queue to pull from early.
