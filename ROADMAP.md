@@ -153,19 +153,45 @@ grow before this can work, not just the generator.
 an external assessment upload to seed `assessmentBaseline` (the original
 plan), each kid will take an **in-app initial placement test** — grade-level
 basics across all standardized subjects, a random/varied question mix, and
-dedicated critical-thinking questions, not just subject recall. Update: per
-`curriculum/curriculum_knowledge_center_index.md`, the real placement tests
-already exist as `ten_year_old_assessment_2_0.pdf`,
-`eight_year_old_assessment_2_0.pdf`, and `toddler_assessment_2_0.pdf` — not
-sent to this project yet, but no longer content that needs building from
-scratch, just files that need to arrive (see
-`curriculum/generator_requirements.md` §6 for the full still-outstanding
-list). What's needed on the build side once they arrive: a way to ingest
-that content and score it into `assessmentBaseline` directly. Same
-underlying schema-granularity issue as above applies here too — and it's an
-open question whether this placement test is its own new thing or an
+dedicated critical-thinking questions, not just subject recall. **Update —
+the track now explicitly splits by kid, per `curriculum/maizley_track_clarification.md`:**
+
+- **Millaray & Makaio** — the real, scored, in-app placement test track,
+  unchanged from the plan above. The question content and per-question
+  scoring rubric are now fully in hand: `curriculum/assessments/millaray_assessment2_rubric.md`
+  (13 items, MA-01–MA-13) and `curriculum/assessments/makaio_assessment2_rubric.md`
+  (12 items, MK-01–MK-12), each tagged to a subject/skill so a result scores
+  into `assessmentBaseline` per subject rather than one lump number. Only
+  the fixed-numeric-answer math items (addition/subtraction/multiplication/
+  money/fractions) have a single correct answer; everything else (reading
+  retelling, descriptive writing, Missouri knowledge, nature ID, mechanical
+  reasoning, the bucket logic puzzle, wayfinding, the Wilderwood Cipher) is
+  open-ended and needs to be scored for reasoning/explanation quality, not
+  string-matched. Still missing: the two raw PDF files themselves
+  (`ten_year_old_assessment_2_0.pdf`, `eight_year_old_assessment_2_0.pdf`) —
+  content is in hand, only the source PDFs aren't. Note Makaio's PDF prints
+  the old spelling "Macayo" in its own title/answer-key text; flag for
+  reprint whenever regenerated.
+- **Maizley (2.5) — no in-app test, no scoring, for now.** Per
+  `curriculum/maizley_track_clarification.md`, she gets a **printable
+  worksheet + a basic hands-on lesson plan** for Sarah to teach directly —
+  paper and parent-led, not app-tracked, not personalized off results (there's
+  no scoring loop feeding it). Content source is
+  `curriculum/assessments/maizley_assessment2_rubric.md` (7 checklist items,
+  MZ-01–MZ-07 — one-step/two-step directions, body vocabulary, shape/color
+  recognition, matching, a hands-on puzzle logged by help-level not
+  pass/fail) reused as worksheet/lesson content with the Y/N-style scoring
+  column dropped. Revisit once she's old enough for the app-based track —
+  not scheduled. Still missing: the raw `toddler_assessment_2_0.pdf` itself.
+
+What's needed on the build side once the raw PDFs arrive for Millaray/Makaio:
+a way to ingest that content and score it into `assessmentBaseline` directly.
+Same underlying schema-granularity issue as above applies here too — and
+it's an open question whether this placement test is its own new thing or an
 extension of `tests/{testId}`, since a one-time/per-quarter placement test
-is different in kind from a routine weekly/biweekly test.
+is different in kind from a routine weekly/biweekly test. For Maizley, the
+build-side need is different in kind: a printable-generation path, not a
+scoring/ingestion one.
 
 **Daily lesson shape is also now spec'd** (v2 standard, "Daily Shape"
 section): warm-up (5-10 min, retrieval questions from already-mastered

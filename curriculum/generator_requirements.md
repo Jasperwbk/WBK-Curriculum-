@@ -84,23 +84,37 @@ Still an open idea (`ROADMAP.md` §6). A `resource_link:` tag mirroring
 `field_app:` remains the likely simplest path once the embedding mechanism
 itself gets designed. Not needed to keep building.
 
-## 6. Initial placement test content — real tests exist, need the actual files
+## 6. Initial placement test content — question/scoring content now in hand, tracks now split by kid, raw PDFs still needed
 
-Per `curriculum/curriculum_knowledge_center_index.md`, the real placement
-tests already exist: `ten_year_old_assessment_2_0.pdf`,
-`eight_year_old_assessment_2_0.pdf`, and `toddler_assessment_2_0.pdf` —
-described there as "already given" (elsewhere, not to this project yet).
-**These three PDFs are the next concrete ask.** The index also says several
-plain-markdown placement drafts are superseded and should NOT be sent/used
-if they turn up separately: `millaray_placement_test.md`,
-`makaio_placement_test.md`, `maizley_placement_observation.md`,
-`parent_mark_sheet.md`, `printable_extras.md` — Assessment 2.0 replaces all
+**The track now explicitly splits by kid**, per
+`curriculum/maizley_track_clarification.md`:
+
+- **Millaray & Makaio** — real, scored, in-app placement test. Question
+  content and per-question scoring rubric have arrived and are saved at
+  `curriculum/assessments/millaray_assessment2_rubric.md` (13 items) and
+  `curriculum/assessments/makaio_assessment2_rubric.md` (12 items), each
+  tagged to subject/skill so a result scores into `assessmentBaseline` per
+  subject rather than one lump number. Makaio's has no fraction item;
+  otherwise the two are near-identical in structure, age-scaled. **Still
+  needed:** the raw PDF files themselves — `ten_year_old_assessment_2_0.pdf`
+  and `eight_year_old_assessment_2_0.pdf`. Note: the Makaio PDF's own
+  printed text still reads "Macayo" (old spelling) in its title/answer-key
+  header — flag for correction whenever it's reprinted.
+- **Maizley (2.5) — no in-app test, no scoring, for now.** Per the track
+  clarification file, she gets a printable worksheet + hands-on lesson plan
+  for Sarah to teach directly instead — paper/parent-led, not app-scored.
+  Content source is `curriculum/assessments/maizley_assessment2_rubric.md`
+  (7 checklist items) reused as worksheet content with the Y/N scoring
+  column dropped; stays generic/toddler-level, not personalized off
+  results. Revisit once she's old enough for the scored track (not
+  scheduled). **Still needed:** the raw `toddler_assessment_2_0.pdf`.
+
+The index also says several plain-markdown placement drafts are superseded
+and should NOT be sent/used if they turn up separately:
+`millaray_placement_test.md`, `makaio_placement_test.md`,
+`maizley_placement_observation.md`, `parent_mark_sheet.md`,
+`printable_extras.md` — Assessment 2.0 (the rubric files above) replaces all
 of those.
-
-Once the actual PDFs arrive, what's still needed on top: the
-correct-answer/rubric per question and which subject/skill each question
-targets, so a result can be scored into `assessmentBaseline` per subject
-rather than as one lump number.
 
 ## 7. Daily routine: Pledge of Allegiance — unchanged
 
@@ -112,13 +126,18 @@ Per `curriculum/curriculum_knowledge_center_index.md`, these exist in the
 curriculum project and are described as current/authoritative, but haven't
 reached this repo yet:
 - `ten_year_old_assessment_2_0.pdf`, `eight_year_old_assessment_2_0.pdf`,
-  `toddler_assessment_2_0.pdf` — the real placement tests (see §6 above)
+  `toddler_assessment_2_0.pdf` — the raw placement-test PDFs (see §6 above
+  — question/scoring content for all three has already arrived via the
+  rubric files, so these three PDFs are the only remaining piece)
 - `seasonal_curriculum_framework.md` — Q2 (Winter) theme, needed before Q2
   content can be built out (see §2)
 - `09_image_bank_and_color_agenda.md` and `10_daily_color_sheet_model.md` —
   the coloring-page system the worksheet notes assume exists (see §4)
-- The "research docket (00-11)" and "Ecosystem_handoff" mentioned in the
-  index as "already in the project, still current" — unclear whether
-  `Ecosystem_handoff` is the same document as this repo's own
-  `curriculum/curriculum_handoff_notes.md` or a separate/updated one; worth
-  clarifying rather than assuming
+
+**Resolved:** the "Ecosystem_handoff" naming ambiguity is settled —
+`curriculum/curriculum_handoff_notes.md` (now v3) explicitly states it IS
+that document; if the curriculum project's own index points to a separate
+file by that name, that's a stale/duplicate reference. The "research docket
+(00-11)" mentioned in the index as "already in the project, still current"
+remains unclarified — still worth asking about if it turns out to contain
+anything not already covered by the files already received.
