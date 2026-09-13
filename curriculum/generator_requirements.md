@@ -3,32 +3,35 @@
 Purpose: a concrete handoff list — what has to land in this repo (or get
 handed to me directly) before the Phase 2 curriculum-generation engine can
 actually be built, versus what's already settled and just needs to keep
-being followed. Assessments are explicitly **not** on this list — those
-come later as a separate upload once printer access/testing happens, and
-the generator will be built to accept that whenever it arrives rather than
-waiting on it now. Until then, it works from the same generic,
-age-appropriate starting points the Q1 curriculum already uses.
+being followed. Updated after a large batch of real curriculum-project
+files arrived (alignment standard v2, research doc, per-kid retrofits,
+worksheet-style notes, and the project's own index file) — several items
+below moved from "needed" to "resolved" as a result.
 
-## 1. The Learn/Practice/Test alignment standard (the one real blocker)
+## 1. The Learn/Practice/Test alignment standard — RESOLVED
 
-`curriculum/curriculum_handoff_notes.md` and
-`curriculum/q1_fall/q1_fall_curriculum_overview.md` both reference a
-`learn_practice_test_alignment_standard.md` as the locked structural
-standard for how Learn/Practice/Test content has to stay aligned with each
-other. It's referenced by name only — the actual document has never been
-provided. This is the one genuine blocker: without it, a generator would
-have to invent its own alignment rules instead of building to the one
-already established elsewhere (sounds like it comes out of the "Odin
-Skald" project mentioned in the handoff notes). Please provide the actual
-file.
+`curriculum/learn_practice_test_alignment_standard_v2.md` is now in the
+repo. This was the one real blocker and it's no longer outstanding. v2 adds
+two concrete mechanisms beyond the original objectives-first skeleton:
+- **Mastery threshold + remediation loop per objective**: track the last 3
+  checks per objective; 2/3 correct = mastered, otherwise the next session
+  must re-teach that specific objective (different framing, not a repeat)
+  before introducing a new one in that subject.
+- **Default daily lesson shape**: warm-up (retrieval from already-mastered
+  objectives) → new teaching → mixed/interleaved practice → ungraded
+  retrieval close-out. Segment lengths ~20-30 min (age 8) / ~25-40 min (age
+  10). See `curriculum/learning_science_framework_upgrade.md` for the
+  research backing each piece of this.
 
-## 2. The rest of the curriculum content (beyond Q1 Fall)
+## 2. The rest of the curriculum content (beyond Q1 Fall) — still needed
 
 Whatever quarters/units exist or are in progress in the separate curriculum
-project — Q2, Q3, Q4, or however it's organized. Same structure already
-proven out in `curriculum/q1_fall/`, nothing new required:
-- **Topic → 3-5 objectives → supporting content** per unit (the locked
-  standard from the alignment doc above)
+project. Per `curriculum/curriculum_knowledge_center_index.md`, Q2 (Winter —
+survival skills & deep focus) already has a theme defined in
+`seasonal_curriculum_framework.md`, which hasn't been sent yet — that's the
+next concrete file to request. Same structure already proven out in
+`curriculum/q1_fall/`, nothing new required:
+- **Topic → 3-5 objectives → supporting content** per unit
 - Tagged with one of the exact standardized subject strings already in use
   (core: `reading_language_arts`, `math`, `science`,
   `social_studies_history`; specialty: `bushcraft_outdoor_skills`,
@@ -37,83 +40,85 @@ proven out in `curriculum/q1_fall/`, nothing new required:
   season
 - Weekly hours per subject, the same way Q1 states them (this is what
   `functions/src/curriculum/weeklyHours.ts` derives the dashboard's
-  per-subject pace weighting from — see that file and
-  `functions/src/curriculum/subjectWeights.ts`)
-- `field_app:` tags where a unit connects to an existing/planned subject
-  app, same convention as Q1
-- Format is flexible (markdown, plain text, whatever's easiest to produce)
-  — structure matters more than file format, per the original handoff
-  notes
+  per-subject pace weighting from)
+- `field_app:` tags where a unit connects to an existing/planned subject app
+- **Plus the retrofit pass** now expected per the v2 standard: 1-2 check
+  questions per objective, same shape as
+  `curriculum/q1_fall/millaray_week1_retrofit.md` and its companions for
+  Makaio/Maizley — the quarterly workflow in the index file describes this
+  as "same file set per kid: overview + weekly table, then the retrofit
+  pass," each future quarter following the same two-file-per-kid pattern
+  Q1 established.
+
+Also per the index: Millaray's government/economics strand (Q1 Weeks 5-9)
+hasn't been decided as continuing into Q2 or a one-quarter unit — flag this
+when Q2 content arrives if it isn't already resolved by then.
 
 ## 3. General education philosophy — already established, just keep following it
 
-Nothing new needed here — the generator will build around the standards
-already laid out in the existing curriculum files rather than asking for
-more:
-- Objectives-first, not topic-first
-- Don't do the kid's practice work for them; no timed-pressure drills
-- Plant/fungi content always separates safe vs. dangerous look-alikes,
-  caution-first
-- Northwoods Kindred / Kindred Homestead as the reference sources for
-  seasonal and spiritual-cultural content
-- Low-rigidity, field-first logging — hours get logged as they actually
-  happen, not forced into a fixed daily block
-- "Start local, grow outward" for history (Osage → Webster County →
-  Missouri → wider country)
-- Everything explicitly built as a reasonable generic starting point until
-  real assessment data comes in, then re-tuned — not benchmarked against a
-  public-school grade level
+No change — the generator builds around the standards already laid out in
+the existing curriculum files: objectives-first, no timed-pressure drills,
+plant/fungi caution-first, Northwoods Kindred/Kindred Homestead as
+spiritual-cultural references, low-rigidity field-first logging, "start
+local, grow outward" history sequencing.
 
-## 4. Printable worksheet format/template preferences (optional — sensible defaults otherwise)
+## 4. Printable worksheet format — mostly resolved, two files still missing
 
-New requirement since the original handoff notes: most of a day's actual
-work should be physical (printed), not on-screen — see `ROADMAP.md` §5.
-Specifically: cursive fluency is an explicit goal, and calligraphy comes
-later. If there's a preferred worksheet template, paper size, or an
-existing cursive-practice format already in use (e.g. traceable letter
-models), provide it or point to it — otherwise the generator will produce
-reasonable printable worksheets from scratch and this can be refined once
-real output exists to react to.
+`curriculum/builder_note_worksheet_style.md` and
+`curriculum/printable_touchpoints.md` now specify this in real detail:
+worksheets should default to an interactive/puzzle format (maze, matching,
+word search, fill-in-the-scene) rather than a bare problem list, with a
+per-subject fit table (math/science/nature ID fit almost every day;
+bushcraft/homestead/spiritual-cultural rarely need one at all) and
+age-banded complexity (Millaray can carry more steps than Makaio; Maizley's
+"worksheet" is really just her color sheet).
 
-## 5. Video / third-party link tagging (optional, for later)
+Both of these files repeatedly reference a **coloring-page system**
+(`09_image_bank_and_color_agenda.md` and `10_daily_color_sheet_model.md`,
+"Section 10's daily rotation") that hasn't been sent yet and is needed to
+fully understand how the worksheet side is meant to sit alongside it.
 
-If curriculum content is going to reference specific videos or outside
-links per unit (see `ROADMAP.md` §6 — mechanism still undecided), a
-`resource_link:` style tag on the relevant unit, same pattern as
-`field_app:`, would be the simplest way to carry that through once the
-embedding mechanism itself gets designed. Not needed to start building.
+## 5. Video / third-party link tagging — unchanged, optional
 
-## 6. Initial placement test content (replaces the old "wait for an upload" plan)
+Still an open idea (`ROADMAP.md` §6). A `resource_link:` tag mirroring
+`field_app:` remains the likely simplest path once the embedding mechanism
+itself gets designed. Not needed to keep building.
 
-Revised plan, superseding the original assumption that `assessmentBaseline`
-would just show up as an external upload: build an **in-app initial
-placement test** each kid takes, covering:
-- Grade-level basics across all the standardized subjects (core and
-  specialty)
-- A mix of random/varied questions, not a fixed predictable set
-- Critical-thinking assessment questions specifically, not just
-  subject-recall
+## 6. Initial placement test content — real tests exist, need the actual files
 
-The family is building the actual question content for this themselves in
-the separate curriculum builder — what's needed here is the content
-(questions, correct answers/rubric, and which subject/skill each question
-targets) in a format the app can ingest, so results can populate
-`assessmentBaseline` directly instead of a teacher hand-typing it from a
-separate document. Where this fits in the existing build isn't decided yet
-(closest existing concept is `tests/{testId}`, but a placement test is
-different in kind from a routine weekly/biweekly test) — flagged in
-`ROADMAP.md` too.
+Per `curriculum/curriculum_knowledge_center_index.md`, the real placement
+tests already exist: `ten_year_old_assessment_2_0.pdf`,
+`eight_year_old_assessment_2_0.pdf`, and `toddler_assessment_2_0.pdf` —
+described there as "already given" (elsewhere, not to this project yet).
+**These three PDFs are the next concrete ask.** The index also says several
+plain-markdown placement drafts are superseded and should NOT be sent/used
+if they turn up separately: `millaray_placement_test.md`,
+`makaio_placement_test.md`, `maizley_placement_observation.md`,
+`parent_mark_sheet.md`, `printable_extras.md` — Assessment 2.0 replaces all
+of those.
 
-## 7. Daily routine: Pledge of Allegiance
+Once the actual PDFs arrive, what's still needed on top: the
+correct-answer/rubric per question and which subject/skill each question
+targets, so a result can be scored into `assessmentBaseline` per subject
+rather than as one lump number.
 
-New requirement: the Pledge of Allegiance should open every school day —
-a fixed routine element at the very start, not tied to a specific subject.
-Whatever ends up generating/structuring a day's content needs to treat this
-as a standing first step, the same way `spiritual_cultural` content already
-carries family rituals (the harvest blót, Winter Nights) elsewhere in the
-Q1 curriculum.
+## 7. Daily routine: Pledge of Allegiance — unchanged
 
-## Not needed yet
+Still needed as a fixed opener before any subject content, every school day.
 
-Nothing currently deferred — assessments are now planned as the in-app
-placement test above rather than an external upload to wait on.
+## Still outstanding — the concrete "send these next" list
+
+Per `curriculum/curriculum_knowledge_center_index.md`, these exist in the
+curriculum project and are described as current/authoritative, but haven't
+reached this repo yet:
+- `ten_year_old_assessment_2_0.pdf`, `eight_year_old_assessment_2_0.pdf`,
+  `toddler_assessment_2_0.pdf` — the real placement tests (see §6 above)
+- `seasonal_curriculum_framework.md` — Q2 (Winter) theme, needed before Q2
+  content can be built out (see §2)
+- `09_image_bank_and_color_agenda.md` and `10_daily_color_sheet_model.md` —
+  the coloring-page system the worksheet notes assume exists (see §4)
+- The "research docket (00-11)" and "Ecosystem_handoff" mentioned in the
+  index as "already in the project, still current" — unclear whether
+  `Ecosystem_handoff` is the same document as this repo's own
+  `curriculum/curriculum_handoff_notes.md` or a separate/updated one; worth
+  clarifying rather than assuming

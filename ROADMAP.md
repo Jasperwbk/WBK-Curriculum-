@@ -94,16 +94,53 @@ Two more pieces added to this idea since it was first written down:
   if the files themselves live in the external folder rather than in
   Firebase Storage.
 
-## 4. Adaptive assessment feeding the daily generator
+**The quarter-to-quarter workflow this feeds is now spec'd**, in
+`curriculum/curriculum_knowledge_center_index.md`: when a new assessment
+printout comes back, read it **per objective, not per subject** (matching
+the mastery-tracking granularity from §4 below); objectives that came back
+solid become warm-up/review material in the new quarter, objectives still
+shaky get re-taught before new ones stack on top (same remediation-loop
+logic as mid-quarter, just applied at the quarter boundary); the new
+quarter's theme comes from `seasonal_curriculum_framework.md` (not sent
+yet — Q2 is Winter/survival skills per the index); the alignment standard
+itself doesn't change quarter to quarter, only the objectives content does.
+This is "retune, don't rebuild" — worth keeping in mind for whatever the
+export/archive step actually packages up, since it implies the exported
+per-quarter record should be structured around objectives-and-their-mastery-
+status, not just raw daily logs.
 
-Weekly/biweekly tests should include specific questions that double as an
-ongoing informal placement assessment, not just a grade. Results should
-feed back into the curriculum-generation engine so it adjusts upcoming
-daily plans automatically per subject per student — e.g. notice one kid
-needs more support on fractions in math while doing fine elsewhere, and
-another is solid on fractions but weak on grammar — and have the generator
-approach the weak spot from a different angle next time, not just repeat
-the same explanation louder.
+## 4. Adaptive assessment feeding the daily generator — mechanism now concrete
+
+Originally written as a vague "results should feed back somehow." That's no
+longer vague: `curriculum/learn_practice_test_alignment_standard_v2.md`
+specifies the actual mechanism, already validated against real learning-
+science research in `curriculum/learning_science_framework_upgrade.md`
+(Bloom's mastery learning, the testing effect, spacing, interleaving —
+sources cited there):
+- **Per-objective running record**: last 3 check results tracked per
+  individual objective, not per topic/subject.
+- **Mastery threshold**: 2 of 3 correct = mastered; below that = "in
+  progress."
+- **Remediation loop**: an objective below threshold gets re-taught (a
+  genuinely different framing/example, not the same lesson repeated) before
+  any new objective is introduced in that subject — the engine isn't
+  allowed to move on just because the week's theme is moving on.
+- **Rebuild rule**: a cluster of low results across a whole subject (not
+  just one objective) signals dropping that subject's difficulty a notch,
+  not looping the same objective forever.
+- Every check's feedback should say *why* an answer is right or wrong, not
+  just mark it — that's what makes the check teach, not just measure.
+- Per-kid retrofit examples showing this applied to real Q1 content:
+  `curriculum/q1_fall/millaray_week1_retrofit.md` (+ weeks 2-9),
+  `makaio_weeks1-9_retrofit.md`, `maizley_weeks1-9_retrofit.md` (hers uses a
+  softer Y/N-per-objective style with no mastery gate, matching her
+  existing "participation over mastery" design).
+
+This still needs one specific per-kid example: notice one kid needs more
+support on fractions in math while doing fine elsewhere, and another is
+solid on fractions but weak on grammar — that's exactly what the
+per-objective mastery tracking above is meant to catch and route around,
+now that the tracking mechanism itself is spec'd rather than aspirational.
 
 Flagging a real schema gap this will hit: the current `tests/{testId}`
 schema (`functions/src/types.ts`) only stores one holistic `score: string`
@@ -116,15 +153,28 @@ grow before this can work, not just the generator.
 an external assessment upload to seed `assessmentBaseline` (the original
 plan), each kid will take an **in-app initial placement test** — grade-level
 basics across all standardized subjects, a random/varied question mix, and
-dedicated critical-thinking questions, not just subject recall. The family
-is building the actual question content in the separate curriculum builder
-(see `curriculum/generator_requirements.md` §6); what's needed on the build
-side is a way to ingest that content and score it into
-`assessmentBaseline` directly. Same underlying schema-granularity issue as
-above applies here too — and it's an open question whether this placement
-test is its own new thing or an extension of `tests/{testId}`, since a
-one-time/per-quarter placement test is different in kind from a routine
-weekly/biweekly test.
+dedicated critical-thinking questions, not just subject recall. Update: per
+`curriculum/curriculum_knowledge_center_index.md`, the real placement tests
+already exist as `ten_year_old_assessment_2_0.pdf`,
+`eight_year_old_assessment_2_0.pdf`, and `toddler_assessment_2_0.pdf` — not
+sent to this project yet, but no longer content that needs building from
+scratch, just files that need to arrive (see
+`curriculum/generator_requirements.md` §6 for the full still-outstanding
+list). What's needed on the build side once they arrive: a way to ingest
+that content and score it into `assessmentBaseline` directly. Same
+underlying schema-granularity issue as above applies here too — and it's an
+open question whether this placement test is its own new thing or an
+extension of `tests/{testId}`, since a one-time/per-quarter placement test
+is different in kind from a routine weekly/biweekly test.
+
+**Daily lesson shape is also now spec'd** (v2 standard, "Daily Shape"
+section): warm-up (5-10 min, retrieval questions from already-mastered
+objectives, not today's material) → new teaching → mixed/interleaved
+practice (today's objective + 1-2 older ones once 2+ are live) → ungraded
+retrieval close-out. Interleaved practice is *expected* to produce more
+wrong answers and feel harder than blocked drilling — that's the method
+working, not regressing, and should be noted as such in any parent-facing
+summary so it doesn't read as the system malfunctioning.
 
 ## 4b. Daily routine: Pledge of Allegiance
 
@@ -158,6 +208,24 @@ This has real implications for whatever generates curriculum content later:
 it can't just emit text for a screen — it needs an actual printable-document
 output (PDF worksheets), and cursive/handwriting practice should be a
 recognized category of that output, not an afterthought.
+
+**Update — worksheet style is now specified, not just "make it physical":**
+`curriculum/builder_note_worksheet_style.md` and
+`curriculum/printable_touchpoints.md` give real detail. Default to
+interactive/puzzle formats (maze, matching columns, word search,
+fill-in-the-scene) rather than a bare problem list — the reference point
+given was dollar-bin/activity-book style workbooks, which is what these
+three kids actually engage with, not drill sheets. Straight drill is a
+fallback only (e.g. a spelling quiz), not the default. Per-subject fit
+varies a lot: math/science/nature ID fit a worksheet almost every day;
+bushcraft/homestead/spiritual-cultural rarely should have one at all (these
+are hands-on/demonstrated skills — a worksheet substitutes for doing it,
+which defeats the point). Age-scales down in complexity from Millaray
+(more steps/detail) to Makaio (shorter) to Maizley (no real worksheet, just
+her color sheet). Both files repeatedly reference a coloring-page system
+(`09_image_bank_and_color_agenda.md`, `10_daily_color_sheet_model.md`) not
+sent yet — needed to see how the worksheet side is meant to coexist with
+it.
 
 ## 6. Embedding video / third-party links in curriculum content
 
