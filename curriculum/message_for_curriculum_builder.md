@@ -65,14 +65,16 @@ worksheet should contain and the receiving app will produce the printable
 document itself.
 
 **4. Initial placement test content.** Instead of waiting on an external
-assessment later, each kid will take an in-app placement test first. Send:
-- Questions covering grade-level basics across **all** the standardized
-  subjects listed above (both core and specialty)
-- A random/varied mix, not one predictable fixed set
-- Dedicated critical-thinking questions, not just subject-recall questions
-- The correct answer or scoring rubric for each question
-- Which subject/skill each question is actually assessing, so results can
-  be scored per-subject rather than as one lump score
+assessment later, each kid will take an in-app placement test first, before
+any daily curriculum generates for them — sign in, take the placement test,
+then daily generation starts from those results. You've already told me
+(via your own index file) that the real tests exist:
+`ten_year_old_assessment_2_0.pdf`, `eight_year_old_assessment_2_0.pdf`, and
+`toddler_assessment_2_0.pdf`. **Send those three PDFs directly** — that's
+what's actually needed here, not new content. On top of the PDFs, also
+send the correct answer/scoring rubric per question and which subject/skill
+each question targets, so a result can be scored into a per-subject
+baseline rather than one lump score.
 
 **5. Optional, only if relevant: video or third-party link references.**
 If a unit should point to a specific video or outside resource, tag it with
@@ -84,15 +86,36 @@ math, or the dashboard itself — that's already built. Also not needed: the
 actual Learn/Practice/Test generation logic — that's a separate engine on
 the receiving end that will consume whatever you send.
 
-## One real blocker on the receiving end
+## Update: the alignment standard arrived — thank you
 
-The receiving project's own notes reference a document called
-`learn_practice_test_alignment_standard.md` as the locked standard for how
-Learn/Practice/Test content has to stay aligned — but that file itself has
-never actually been sent over, only referenced by name. If you have it or
-know where it lives, that needs to come across too — otherwise the
-receiving side will end up guessing at rules that were supposedly already
-decided.
+`learn_practice_test_alignment_standard_v2.md`, the research doc behind it,
+the per-kid retrofits, the worksheet-style note, and your own knowledge-
+center index all made it across in the last batch. That's resolved a real
+blocker on this end. What's left is narrower and more specific now.
+
+## Files your own index says already exist — please export exactly these
+
+Your `curriculum_knowledge_center_index.md` names several files as
+current/authoritative and already built, but none of these five have
+actually reached this project yet. Please send them specifically, by name —
+not new content, just the files you've already described as existing:
+
+1. `ten_year_old_assessment_2_0.pdf`
+2. `eight_year_old_assessment_2_0.pdf`
+3. `toddler_assessment_2_0.pdf`
+4. `seasonal_curriculum_framework.md` — your index says Q2's (Winter)
+   theme is already defined in here; needed before Q2 content can be built
+   on the receiving end
+5. `09_image_bank_and_color_agenda.md` and `10_daily_color_sheet_model.md`
+   — your worksheet-style note and printable-touchpoints note both
+   reference "Section 10's daily rotation" as already locked; these two
+   files are needed to actually see that system, not just references to it
+
+Also: your index mentions a "research docket (00-11)" and an
+"Ecosystem_handoff" as "already in the project, still current." It's not
+clear whether `Ecosystem_handoff` is the same document as this project's
+own `curriculum_handoff_notes.md` or a separate/newer one — please clarify
+and send whichever it actually is if it's not that file.
 
 ## Bottom line
 
