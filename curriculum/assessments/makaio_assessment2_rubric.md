@@ -1,5 +1,11 @@
 # Scoring Rubric — eight_year_old_assessment_2_0.pdf (Makaio)
 
+**Note:** `eight_year_old_assessment_2_0.pdf` turned out to be a mislabeled
+zip archive, not a real PDF. The actual printable worksheet text (same
+questions, plus the answer key, corrected spelling) is at
+`makaio_assessment2_content.md` in this same folder — use that as the
+reliable source until a real PDF is regenerated.
+
 Tagged to the actual questions in the PDF. **Note:** the PDF's own text
 still uses the old spelling "Macayo" in its printed content (title and
 answer-key header) — that's baked into the PDF itself, not something this

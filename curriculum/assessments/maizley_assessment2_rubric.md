@@ -1,5 +1,10 @@
 # Scoring Rubric — toddler_assessment_2_0.pdf (Maizley)
 
+**Note:** `toddler_assessment_2_0.pdf` turned out to be a mislabeled zip
+archive, not a real PDF. The actual printable checklist text is at
+`maizley_assessment2_content.md` in this same folder — use that as the
+reliable source until a real PDF is regenerated.
+
 Tagged to the actual checklist items in the PDF. Not a scored test — a
 checklist logged Y/N, same as her retrofit format.
 

@@ -101,8 +101,11 @@ the mastery-tracking granularity from §4 below); objectives that came back
 solid become warm-up/review material in the new quarter, objectives still
 shaky get re-taught before new ones stack on top (same remediation-loop
 logic as mid-quarter, just applied at the quarter boundary); the new
-quarter's theme comes from `seasonal_curriculum_framework.md` (not sent
-yet — Q2 is Winter/survival skills per the index); the alignment standard
+quarter's theme comes from `curriculum/seasonal_curriculum_framework.md`
+(now in the repo — confirms Q2 is Winter/survival skills & deep focus,
+anchored to the winter solstice/Yule and actual zone 6b/7a garden-planning
+timing; actual Q2 unit content itself hasn't arrived yet, only the theme);
+the alignment standard
 itself doesn't change quarter to quarter, only the objectives content does.
 This is "retune, don't rebuild" — worth keeping in mind for whatever the
 export/archive step actually packages up, since it implies the exported
@@ -167,29 +170,34 @@ the track now explicitly splits by kid, per `curriculum/maizley_track_clarificat
   retelling, descriptive writing, Missouri knowledge, nature ID, mechanical
   reasoning, the bucket logic puzzle, wayfinding, the Wilderwood Cipher) is
   open-ended and needs to be scored for reasoning/explanation quality, not
-  string-matched. Still missing: the two raw PDF files themselves
-  (`ten_year_old_assessment_2_0.pdf`, `eight_year_old_assessment_2_0.pdf`) —
-  content is in hand, only the source PDFs aren't. Note Makaio's PDF prints
-  the old spelling "Macayo" in its own title/answer-key text; flag for
-  reprint whenever regenerated.
+  string-matched. **The three source PDFs turned out to be mislabeled zip
+  archives, not valid PDFs** — this is now fully resolved rather than
+  waiting: `curriculum/assessments/millaray_assessment2_content.md` and
+  `makaio_assessment2_content.md` are the reliable text export (same
+  questions + answer key) and are what the generator should build against.
+  A real designed PDF (compass-rose motif, cipher art) is optional visual
+  polish, not a blocker. Note Makaio's source content still prints the old
+  spelling "Macayo" in its own title/answer-key text; this repo uses
+  "Makaio" everywhere — flag for correction whenever a real PDF is made.
 - **Maizley (2.5) — no in-app test, no scoring, for now.** Per
   `curriculum/maizley_track_clarification.md`, she gets a **printable
   worksheet + a basic hands-on lesson plan** for Sarah to teach directly —
   paper and parent-led, not app-tracked, not personalized off results (there's
   no scoring loop feeding it). Content source is
-  `curriculum/assessments/maizley_assessment2_rubric.md` (7 checklist items,
+  `curriculum/assessments/maizley_assessment2_content.md` (7 checklist items,
   MZ-01–MZ-07 — one-step/two-step directions, body vocabulary, shape/color
   recognition, matching, a hands-on puzzle logged by help-level not
   pass/fail) reused as worksheet/lesson content with the Y/N-style scoring
   column dropped. Revisit once she's old enough for the app-based track —
-  not scheduled. Still missing: the raw `toddler_assessment_2_0.pdf` itself.
+  not scheduled. Her source PDF was equally broken; the content file is the
+  reliable version here too.
 
-What's needed on the build side once the raw PDFs arrive for Millaray/Makaio:
-a way to ingest that content and score it into `assessmentBaseline` directly.
-Same underlying schema-granularity issue as above applies here too — and
-it's an open question whether this placement test is its own new thing or an
-extension of `tests/{testId}`, since a one-time/per-quarter placement test
-is different in kind from a routine weekly/biweekly test. For Maizley, the
+What's needed on the build side now: a way to ingest the Millaray/Makaio
+content and score it into `assessmentBaseline` directly. Same underlying
+schema-granularity issue as above applies here too — and it's an open
+question whether this placement test is its own new thing or an extension
+of `tests/{testId}`, since a one-time/per-quarter placement test is
+different in kind from a routine weekly/biweekly test. For Maizley, the
 build-side need is different in kind: a printable-generation path, not a
 scoring/ingestion one.
 
@@ -248,10 +256,37 @@ bushcraft/homestead/spiritual-cultural rarely should have one at all (these
 are hands-on/demonstrated skills — a worksheet substitutes for doing it,
 which defeats the point). Age-scales down in complexity from Millaray
 (more steps/detail) to Makaio (shorter) to Maizley (no real worksheet, just
-her color sheet). Both files repeatedly reference a coloring-page system
-(`09_image_bank_and_color_agenda.md`, `10_daily_color_sheet_model.md`) not
-sent yet — needed to see how the worksheet side is meant to coexist with
-it.
+her color sheet).
+
+**Update — the color-sheet system referenced above has now arrived and is
+locked**, per `curriculum/09_image_bank_and_color_agenda.md` and
+`curriculum/10_daily_color_sheet_model.md`:
+- Each school day, each kid gets **one featured subject** (one of the 8
+  standardized subject strings) and **one color sheet matching that
+  subject** — generated black line art, not a stock photo or generic
+  clip-art. No two kids share a subject or a picture the same day.
+- Daily assignment is **deterministic, not random**, so the three don't
+  collide: an 8-item subject ring with fixed per-kid offsets (`Millaray =
+  ring[d % 8]`, `Makaio = ring[(d+3) % 8]`, `Maizley = ring[(d+5) % 8]`,
+  `d` = school-day index in the quarter). Maizley gets nudged off a poor
+  toddler fit (bushcraft/social-studies/spiritual-cultural as a drawing) to
+  the nearest toddler-safe subject the other two don't already have.
+  Example nudge already worked out for Week 1 Day 1: Millaray→math,
+  Makaio→reading_language_arts, Maizley→nature_identification (nudged off
+  social_studies).
+- **Art-ability bands stand in for real art assessments** until those are
+  uploaded — Band A (Maizley): 2-4 giant objects, thick outlines, no
+  background; Band B (Makaio): one clear scene, 4-8 objects; Band C
+  (Millaray): full detailed scene, background allowed, still colorable in
+  ~15-20 min. When real art-sample data eventually arrives (grip,
+  line-staying, stamina, etc.), rebuild *band* the same assess-align-reprint
+  way curriculum rebuilds after placement — subject uniqueness never
+  changes, only complexity.
+- Per-subject drawing content is fixed to keep it recognizable and
+  age-appropriate (e.g. no realistic knife for Maizley even under
+  bushcraft; no invented ritual diagrams under spiritual-cultural; no
+  battle gore under social-studies). The color sheet is a separate printable
+  from the day's worksheet but travels with it.
 
 ## 6. Embedding video / third-party links in curriculum content
 

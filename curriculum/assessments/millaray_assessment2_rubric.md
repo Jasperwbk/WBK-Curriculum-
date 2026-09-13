@@ -1,5 +1,11 @@
 # Scoring Rubric — ten_year_old_assessment_2_0.pdf (Millaray)
 
+**Note:** `ten_year_old_assessment_2_0.pdf` turned out to be a mislabeled
+zip archive, not a real PDF. The actual printable worksheet text (same
+questions, plus the answer key) is at `millaray_assessment2_content.md` in
+this same folder — use that as the reliable source until a real PDF is
+regenerated.
+
 Tagged to the actual questions in the PDF, for per-subject baseline scoring.
 
 | id | subject | skill | question (from PDF) | answer/rubric |
