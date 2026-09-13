@@ -83,5 +83,20 @@ service cloud.firestore {
       allow create: if isTeacherInFamily(request.resource.data.familyId);
       allow update, delete: if isTeacherInFamily(resource.data.familyId);
     }
+
+    // Per-objective mastery tracking (learn_practice_test_alignment_standard_v2).
+    // Only ever written by Cloud Functions (admin SDK, bypasses these rules) —
+    // submitPlacementTest today, the daily continuous-reassessment loop later.
+    match /masteryRecords/{recordId} {
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
+    // Placement-test / printable-check-in audit trail (Assessment 2.0),
+    // written only by submitPlacementTest / submitPrintableCheckIn.
+    match /placementTests/{recordId} {
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
   }
 }

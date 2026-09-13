@@ -50,6 +50,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               Plan a day
             </NavLink>
+            <NavLink
+              to="/placement"
+              className={navLinkClass}
+              style={({ isActive }) => ({
+                background: isActive ? "var(--series-1)" : "transparent",
+                color: isActive ? "#ffffff" : "var(--text-secondary)",
+              })}
+            >
+              Placement test
+            </NavLink>
           </nav>
         </div>
         <div className="flex items-center gap-3 text-sm">

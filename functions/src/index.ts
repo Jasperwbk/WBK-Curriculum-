@@ -5,3 +5,4 @@ initializeApp();
 export { getDashboardData } from "./dashboard";
 export { parseExtracurricular, confirmExtracurricular } from "./extracurriculars";
 export { generatePlan } from "./dayPlans";
+export { submitPlacementTest, submitPrintableCheckIn } from "./placementTest";

@@ -20,7 +20,7 @@ interface GeneratePlanResponse {
 }
 
 const generatePlanFn = httpsCallable<
-  { date: string; studentNames: string[]; prompt: string },
+  { date: string; studentNames: string[]; studentIds: string[]; prompt: string },
   GeneratePlanResponse
 >(functions, "generatePlan");
 
@@ -69,8 +69,10 @@ export function PlanDayPage() {
     setGenerating(true);
     setError(null);
     try {
-      const names = students.filter((s) => selectedStudentIds.includes(s.uid)).map((s) => s.displayName);
-      const res = await generatePlanFn({ date, studentNames: names, prompt });
+      const selected = students.filter((s) => selectedStudentIds.includes(s.uid));
+      const names = selected.map((s) => s.displayName);
+      const ids = selected.map((s) => s.uid);
+      const res = await generatePlanFn({ date, studentNames: names, studentIds: ids, prompt });
       setTitle(res.data.title);
       setSummary(res.data.summary);
       setPlanText(res.data.planText);

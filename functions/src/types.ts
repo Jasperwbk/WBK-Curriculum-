@@ -90,6 +90,64 @@ export interface TestRecord {
   imageUrl: string | null;
 }
 
+// --- Objective mastery tracking (learn_practice_test_alignment_standard_v2) ---
+//
+// Tracks the last up-to-3 check results per individual objective (not per
+// subject/topic). 2-of-3 correct = mastered; otherwise the objective stays
+// "in progress" and the next session must re-teach it (different framing,
+// not a repeat) before a new objective is introduced in that subject. See
+// curriculum/learn_practice_test_alignment_standard_v2.md.
+export interface MasteryRecord {
+  familyId: string;
+  userId: string;
+  objectiveId: string; // e.g. "MA-03", or a future retrofit objective id
+  subject: Subject;
+  skill: string; // short label, e.g. "multiplication", "wayfinding"
+  recentResults: boolean[]; // oldest first, capped at the last 3
+  mastered: boolean;
+  masteredAt: Timestamp | null;
+  updatedAt: Timestamp;
+}
+
+// --- Placement test / printable check-in (Assessment 2.0) ---
+//
+// Millaray & Makaio: a one-time, teacher-administered, scored in-app
+// placement test. Maizley: a non-scored printable checklist for Sarah to
+// use directly — see curriculum/maizley_track_clarification.md.
+export type PlacementKidKey = "millaray" | "makaio" | "maizley";
+
+export type PlacementItemKind = "fixed" | "open" | "checklist" | "puzzle_level";
+
+export interface PlacementTestItem {
+  id: string; // e.g. "MA-01", "MZ-07"
+  subject: Subject;
+  skill: string;
+  question: string;
+  kind: PlacementItemKind;
+  correctAnswer?: string; // only set for "fixed" items (e.g. math)
+}
+
+export interface PlacementItemResult {
+  itemId: string;
+  // Fixed items: graded automatically against correctAnswer.
+  // Open/checklist items: teacher's own judgment call, per the rubric notes.
+  // Puzzle-level items (Maizley's MZ-07): a level string, not a boolean.
+  answerText?: string;
+  correct?: boolean | null;
+  level?: string;
+  notes?: string;
+}
+
+export interface PlacementTestRecord {
+  familyId: string;
+  userId: string;
+  kidKey: PlacementKidKey;
+  date: Timestamp;
+  scored: boolean; // false for Maizley's printable-only check-in
+  results: PlacementItemResult[];
+  subjectBaselines: Partial<Record<Subject, string>>; // e.g. "5/7 correct (71%)"
+}
+
 export interface UploadRecord {
   familyId: string;
   uploadedBy: string;

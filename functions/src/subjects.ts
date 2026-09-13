@@ -23,3 +23,19 @@ export function getSubjectType(subject: string): SubjectType {
   if (SPECIALTY_SET.has(subject)) return "specialty";
   throw new Error(`Unknown subject: "${subject}". Must be one of ${ALL_SUBJECTS.join(", ")}.`);
 }
+
+const SUBJECT_LABELS: Record<Subject, string> = {
+  reading_language_arts: "Reading / Language Arts",
+  math: "Math",
+  science: "Science",
+  social_studies_history: "Social Studies / History",
+  bushcraft_outdoor_skills: "Bushcraft / Outdoor Skills",
+  homestead_skills: "Homestead Skills",
+  nature_identification: "Nature Identification",
+  spiritual_cultural: "Spiritual / Cultural",
+};
+
+/** Human-readable label for a standardized subject string, for prompts/UI. */
+export function subjectLabel(subject: string): string {
+  return SUBJECT_LABELS[subject as Subject] ?? subject;
+}
