@@ -7,7 +7,7 @@ import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getDailySubjectAssignments } from "./curriculum/colorSheetRotation";
 import { inferKidKey } from "./curriculum/placementTestItems";
-import type { Family, MasteryRecord, PlacementKidKey, UserProfile } from "./types";
+import type { Family, MasteryRecord, PlacementKidKey, Subject, UserProfile } from "./types";
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
@@ -54,18 +54,36 @@ async function buildStudentContext(
   if (profile.familyId !== familyId) return null;
 
   const records = await getMasteryRecordsForUser(studentId);
-  const mastered = records.filter((r) => r.mastered);
+  // "Aced" (3-for-3, no struggle at all) is a stricter subset of "mastered"
+  // (2-of-3) — split it out so acing-it-easily gets a harder follow-up
+  // instead of blending into ordinary warm-up review material.
+  const aced = records.filter((r) => r.aced);
+  const masteredNotAced = records.filter((r) => r.mastered && !r.aced);
   const inProgress = records.filter((r) => !r.mastered);
 
   const lines: string[] = [`${profile.displayName}:`];
 
-  if (mastered.length > 0) {
-    lines.push(`  Mastered (good warm-up/retrieval material): ${formatObjectives(mastered)}`);
+  if (masteredNotAced.length > 0) {
+    lines.push(`  Mastered (good warm-up/retrieval material): ${formatObjectives(masteredNotAced)}`);
+  }
+  if (aced.length > 0) {
+    lines.push(
+      `  Acing these easily, no struggle at all (3-for-3 correct) — don't just review at this level, ` +
+        `give a genuinely harder stretch version of the skill: ${formatObjectives(aced)}`
+    );
   }
   if (inProgress.length > 0) {
     lines.push(
       `  Still building — needs re-teaching with a genuinely different framing before new ` +
         `objectives stack on top in that subject: ${formatObjectives(inProgress)}`
+    );
+  }
+
+  const subjectsReadyToExceedGradeLevel = subjectsWhereEveryTrackedObjectiveIsAced(records);
+  if (subjectsReadyToExceedGradeLevel.length > 0) {
+    lines.push(
+      `  Acing everything currently tracked in ${subjectsReadyToExceedGradeLevel.map(subjectLabel).join(", ")} — ` +
+        `don't plateau at grade-level review here; introduce above-grade-level material or a genuine stretch goal.`
     );
   }
   const baselineEntries = Object.entries(profile.assessmentBaseline ?? {});
@@ -92,6 +110,25 @@ async function buildStudentContext(
 
 function formatObjectives(records: MasteryRecord[]): string {
   return records.map((r) => `${subjectLabel(r.subject)}/${r.skill}`).join(", ");
+}
+
+/**
+ * A subject only counts as "ready to exceed grade-level" once every single
+ * objective currently tracked for it is aced — one still-building or
+ * merely-mastered objective in the mix means there's still real work to do
+ * at the current level first (the "close gaps before going further"
+ * ordering from ROADMAP.md §4).
+ */
+function subjectsWhereEveryTrackedObjectiveIsAced(records: MasteryRecord[]): Subject[] {
+  const bySubject = new Map<Subject, MasteryRecord[]>();
+  for (const r of records) {
+    const list = bySubject.get(r.subject) ?? [];
+    list.push(r);
+    bySubject.set(r.subject, list);
+  }
+  return [...bySubject.entries()]
+    .filter(([, recs]) => recs.every((r) => r.aced))
+    .map(([subject]) => subject);
 }
 
 /**
@@ -182,6 +219,13 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         "4. If per-student context names a featured print subject + color sheet for a kid today, mention it " +
         "as their printable color sheet for the day (a black-line-art drawing they color after their " +
         "worksheet) — don't invent a different subject for it, and don't give two kids the same one.\n" +
+        "5. If per-student context flags an objective as being aced easily (no struggle at all), don't just " +
+        "repeat it or fold it into ordinary review — give a genuinely harder stretch version of that specific " +
+        "skill today, so acing something too easily gets detected and probed further rather than just marked " +
+        "done. If a whole subject is flagged as 'ready to exceed grade-level,' don't plateau at grade-level " +
+        "review in that subject — introduce real above-grade-level material or a stretch goal there. The " +
+        "overall goal is closing whatever gaps a kid currently has first, then continuing to push them past " +
+        "typical grade-level expectations once caught up, not capping out once they're merely 'on level.'\n" +
         "Interleaved/mixed practice is expected to produce more wrong answers and feel harder than blocked " +
         "drilling — note that in the plan as the method working as intended, not a sign of falling behind, " +
         "if it comes up.\n\n" +

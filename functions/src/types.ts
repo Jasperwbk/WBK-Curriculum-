@@ -106,6 +106,13 @@ export interface MasteryRecord {
   recentResults: boolean[]; // oldest first, capped at the last 3
   mastered: boolean;
   masteredAt: Timestamp | null;
+  // Stricter than "mastered" (2-of-3): every one of the last 3 checks was
+  // correct with no struggle at all. This is the "too easy" signal — the
+  // generator should respond by introducing a genuinely harder stretch
+  // version of the skill, not just reviewing it or moving to the next
+  // already-scheduled objective at the same difficulty.
+  aced: boolean;
+  acedAt: Timestamp | null;
   updatedAt: Timestamp;
 }
 

@@ -11,7 +11,7 @@ type ScoredKidKey = "millaray" | "makaio";
 
 const submitCheckInFn = httpsCallable<
   { userId: string; kidKey: ScoredKidKey; results: { objectiveId: string; correct: boolean }[] },
-  { updated: { objectiveId: string; mastered: boolean }[] }
+  { updated: { objectiveId: string; mastered: boolean; aced: boolean }[] }
 >(functions, "submitCheckIn");
 
 export function CheckInPage() {
@@ -30,6 +30,7 @@ export function CheckInPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [masteredIds, setMasteredIds] = useState<Set<string>>(new Set());
+  const [acedIds, setAcedIds] = useState<Set<string>>(new Set());
   const [savedCount, setSavedCount] = useState(0);
 
   useEffect(() => {
@@ -79,6 +80,14 @@ export function CheckInPage() {
         }
         return next;
       });
+      setAcedIds((current) => {
+        const next = new Set(current);
+        for (const u of res.data.updated) {
+          if (u.aced) next.add(u.objectiveId);
+          else next.delete(u.objectiveId);
+        }
+        return next;
+      });
       setSavedCount((n) => n + 1);
       setMarks({});
     } catch {
@@ -98,7 +107,9 @@ export function CheckInPage() {
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
             Ask these in the moment during the week's actual activity — not a separate quiz. Only
             mark the ones you actually checked; anything left blank stays untouched. Week 1 only for
-            now, for Millaray and Makaio.
+            now, for Millaray and Makaio. If a kid nails an objective 3 times in a row with no
+            struggle, it gets flagged "🚀 Acing it" — the next day plan will give them something
+            harder there instead of just moving on.
           </p>
         </div>
 
@@ -136,6 +147,7 @@ export function CheckInPage() {
               {items.map((o) => {
                 const mark_ = marks[o.id];
                 const mastered = masteredIds.has(o.id);
+                const aced = acedIds.has(o.id);
                 return (
                   <div
                     key={o.id}
@@ -146,7 +158,16 @@ export function CheckInPage() {
                       <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                         {o.skill}
                       </p>
-                      {mastered && (
+                      {aced && (
+                        <span
+                          className="text-xs shrink-0 font-medium"
+                          style={{ color: "var(--series-1)" }}
+                          title="3-for-3 correct, no struggle — ready for harder material"
+                        >
+                          🚀 Acing it
+                        </span>
+                      )}
+                      {mastered && !aced && (
                         <span className="text-xs shrink-0" style={{ color: "var(--status-good)" }}>
                           ● Mastered
                         </span>

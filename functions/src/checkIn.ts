@@ -61,7 +61,7 @@ export const submitCheckIn = onCall<SubmitCheckInRequest>(async (request) => {
         skill: objective.skill,
         correct: result.correct === true,
       });
-      return { objectiveId: objective.id, mastered: record.mastered };
+      return { objectiveId: objective.id, mastered: record.mastered, aced: record.aced };
     })
   );
 

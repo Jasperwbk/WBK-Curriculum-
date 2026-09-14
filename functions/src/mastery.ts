@@ -7,6 +7,13 @@ import type { MasteryRecord, Subject } from "./types";
  * 3 check results; 2 of 3 correct = mastered. Fewer than 3 recorded results
  * is never "mastered" yet — a placement test only seeds a baseline data
  * point, it doesn't declare mastery off one answer.
+ *
+ * "Aced" is a stricter, separate signal on top of mastery: all 3 of the
+ * last checks correct, not just 2. Mastery alone just means "stop
+ * re-teaching this, it's solid" — aced means "this wasn't even a
+ * struggle," which is the trigger to probe harder rather than just move on
+ * to whatever's next at the same difficulty (ROADMAP.md §4, "detect
+ * too easy and probe upward").
  */
 const MASTERY_WINDOW = 3;
 const MASTERY_THRESHOLD = 2;
@@ -15,12 +22,13 @@ const MASTERY_THRESHOLD = 2;
 export function applyMasteryResult(
   recentResults: readonly boolean[],
   correct: boolean
-): { recentResults: boolean[]; mastered: boolean } {
+): { recentResults: boolean[]; mastered: boolean; aced: boolean } {
   const updated = [...recentResults, correct].slice(-MASTERY_WINDOW);
   const mastered =
     updated.length >= MASTERY_WINDOW &&
     updated.filter(Boolean).length >= MASTERY_THRESHOLD;
-  return { recentResults: updated, mastered };
+  const aced = updated.length >= MASTERY_WINDOW && updated.every(Boolean);
+  return { recentResults: updated, mastered, aced };
 }
 
 function masteryDocId(userId: string, objectiveId: string): string {
@@ -46,7 +54,7 @@ export async function recordMasteryResult(params: {
   const snap = await ref.get();
   const existing = snap.exists ? (snap.data() as MasteryRecord) : null;
 
-  const { recentResults, mastered } = applyMasteryResult(
+  const { recentResults, mastered, aced } = applyMasteryResult(
     existing?.recentResults ?? [],
     params.correct
   );
@@ -60,6 +68,8 @@ export async function recordMasteryResult(params: {
     recentResults,
     mastered,
     masteredAt: mastered ? (existing?.masteredAt ?? now) : null,
+    aced,
+    acedAt: aced ? (existing?.acedAt ?? now) : null,
     updatedAt: now,
   };
   await ref.set(record);
