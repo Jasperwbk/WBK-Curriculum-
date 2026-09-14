@@ -6,6 +6,7 @@ import { requireCaller, requireTeacher } from "./util/auth";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getDailySubjectAssignments } from "./curriculum/colorSheetRotation";
+import { getQ1WeekNumber, loadWeekContent } from "./curriculum/loadQ1Content";
 import { inferKidKey } from "./curriculum/placementTestItems";
 import type { Family, MasteryRecord, PlacementKidKey, Subject, UserProfile } from "./types";
 
@@ -97,6 +98,16 @@ async function buildStudentContext(
 
   const kidKey = inferKidKey(profile.displayName);
   if (kidKey) {
+    const weekNumber = getQ1WeekNumber(schoolYearStart, planDate);
+    const weekContent = weekNumber !== null ? loadWeekContent(kidKey, weekNumber) : null;
+    if (weekContent) {
+      lines.push(
+        `  --- This week's actual curriculum content (Week ${weekNumber}), verbatim from the real Q1 file. ` +
+          `Base today's specific topics/objectives/activities on this — do not invent unrelated topics or ` +
+          `substitute generic homeschool content: ---\n${weekContent}\n  --- end of Week ${weekNumber} content ---`
+      );
+    }
+
     const assignments = getDailySubjectAssignments(schoolYearStart, planDate);
     const featuredSubject = assignments[kidKey];
     lines.push(
@@ -202,6 +213,13 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         `concrete learning objectives and mention one of these standardized subjects if relevant: ${ALL_SUBJECTS.join(", ")}. ` +
         "Include a short, optional worksheet or reflection-question idea only if it fits the day's tone — " +
         "skip it for a pure-fun day.\n\n" +
+        "If per-student context below includes a block of 'this week's actual curriculum content,' that " +
+        "content is authoritative — it's the real, already-written curriculum for that kid's current week, " +
+        "not a suggestion. Base the day's actual topics, objectives, and activities on it directly rather " +
+        "than inventing your own unrelated topic, even a plausible-sounding one. Only fall back on your own " +
+        "general knowledge when no such block is present (e.g. the date falls outside the currently-written " +
+        "curriculum) or the teacher's own description explicitly asks for something different (a field trip, " +
+        "a sick day, etc. overrides the week's regular content for that one day).\n\n" +
         "For a regular school day (not a pure field-trip/fun day), follow these standing rules:\n" +
         "1. Open with the Pledge of Allegiance as a fixed first step, independent of whatever subject " +
         "content follows.\n" +

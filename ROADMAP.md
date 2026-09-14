@@ -189,6 +189,29 @@ paper version (plain question list + blank answer lines/checkboxes, no app
 chrome or scoring UI) via the browser's own print dialog — no more manually
 retyping the test into a separate document to hand it to a kid on paper.
 
+**A real correctness gap, now fixed: `generatePlan` wasn't actually reading
+the real curriculum content.** Caught by direct question ("does Claude have
+the data he's supposed to build from, or is he just generating randomly?")
+— the honest answer at the time was the latter. The generator had the
+pedagogical *rules* (pledge, daily shape, mastery routing) and short
+mastery-record skill labels, but never the actual authored Q1 week content
+sitting in `curriculum/q1_fall/{kid}_q1_fall.md` — so on any day without a
+detailed teacher prompt, it was filling that gap with plausible-sounding
+general knowledge instead of the real curriculum. Fixed:
+`functions/src/curriculum/loadQ1Content.ts` extracts the correct week's
+actual topic/objective/activity table (verbatim) for a kid from those
+files, keyed off the plan's date via the same school-day-index math the
+color-sheet rotation already uses; `generatePlan`'s prompt now states that
+block is authoritative when present and must ground the day's real topics,
+not just inform tone. The source files are copied into the deployed
+function at build time (`functions/scripts/copy-curriculum-data.js`, wired
+into `npm run build`) since `firebase deploy` only uploads `functions/`,
+not the repo-level `curriculum/` folder — verified end to end against the
+real compiled output (correct week extraction, no bleed into the next
+week's heading, correct null outside Q1's 9 weeks). Scoped to Q1 only, same
+as everything else here — Q2+ content will need the same treatment once
+it's written.
+
 This still needs one specific per-kid example: notice one kid needs more
 support on fractions in math while doing fine elsewhere, and another is
 solid on fractions but weak on grammar — that's exactly what the
