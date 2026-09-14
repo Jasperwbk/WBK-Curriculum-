@@ -155,6 +155,38 @@ once this pilot has actually been used for a week or two. Maizley stays
 off this mechanism entirely for now, per her track's no-mastery-gate design
 — her Week 1-9 checks remain informal/paper rather than app-tracked.
 
+**Confirmed direction, plus two refinements to design in before this goes
+further** (from a conversation walking through how placement/check-ins
+should actually work day to day):
+- **The gradual-difficulty-increase shape is confirmed as the right one** —
+  gate on mastery, introduce harder material once a kid demonstrates it,
+  same as already built. Keep building it this way.
+- **Detect "too easy" and probe upward, not just gate forward.** Right now
+  pacing only ever moves at the built-in week-to-week/quarter-to-quarter
+  rate — there's no mechanism for a kid who's clearly coasting to get
+  bumped to harder material *within* a week to find where their real
+  ceiling/gap actually is. Needs a rule like: N-for-N correct on an
+  objective's checks (not just hitting the 2-of-3 threshold) triggers
+  presenting a harder version of that skill rather than just marking it
+  mastered and moving on — the goal is finding the actual failure point,
+  not just confirming competence at the level already being asked.
+- **Two-phase goal, explicitly stated:** first close whatever gaps a kid
+  currently has relative to their own age/grade level (expected, since
+  there's no established curriculum history yet); once caught up, keep
+  pushing past typical grade-level expectations rather than plateauing
+  there — the point of homeschooling this way is to go further than a kid
+  would in a standard school, not just match it. The mastery/remediation
+  loop already supports "don't move on until solid"; it doesn't yet have an
+  explicit "keep escalating past grade-level once caught up, don't cap out"
+  rule — that's a real design gap, not just a content gap, worth thinking
+  through before scaling this past the Week 1 pilot.
+
+**Placement test print/export — built.** The Placement Test page now has a
+"Print blank copy" button per selected kid, rendering a clean, ink-friendly
+paper version (plain question list + blank answer lines/checkboxes, no app
+chrome or scoring UI) via the browser's own print dialog — no more manually
+retyping the test into a separate document to hand it to a kid on paper.
+
 This still needs one specific per-kid example: notice one kid needs more
 support on fractions in math while doing fine elsewhere, and another is
 solid on fractions but weak on grammar — that's exactly what the

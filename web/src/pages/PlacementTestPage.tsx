@@ -117,8 +117,8 @@ export function PlacementTestPage() {
 
   return (
     <AppShell>
-      <div className="max-w-2xl space-y-6">
-        <div>
+      <div className="max-w-2xl space-y-6 print:max-w-full">
+        <div className="print:hidden">
           <h1 className="brand-heading text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             Placement test
           </h1>
@@ -126,7 +126,7 @@ export function PlacementTestPage() {
             A one-time starting-point check per kid. Proctor it yourself (read the question aloud
             or hand over the paper version), then enter what happened here — Millaray and Makaio's
             results feed the pace dashboard and daily plans; Maizley's is a printable check-in only,
-            not scored.
+            not scored. Or print a blank copy below and let them fill it out on paper first.
           </p>
         </div>
 
@@ -137,7 +137,7 @@ export function PlacementTestPage() {
         )}
 
         {eligible.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 print:hidden">
             {eligible.map((s) => (
               <button
                 key={s.uid}
@@ -157,7 +157,7 @@ export function PlacementTestPage() {
 
         {kidKey === "maizley" && (
           <p
-            className="text-sm rounded-md border px-3 py-2"
+            className="text-sm rounded-md border px-3 py-2 print:hidden"
             style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--surface-1)" }}
           >
             Not a test — just play with a purpose. No pass/fail; this is a snapshot to feed her
@@ -166,7 +166,48 @@ export function PlacementTestPage() {
         )}
 
         {selectedStudent && (
-          <div className="space-y-4">
+          <button
+            onClick={() => window.print()}
+            className="rounded-md border px-3 py-2 text-sm font-medium print:hidden"
+            style={{ borderColor: "var(--series-1)", color: "var(--series-1)" }}
+          >
+            Print blank copy for {selectedStudent.displayName}
+          </button>
+        )}
+
+        {/* Printable version: plain question list with blank answer space,
+            no scoring UI. Hidden on screen, shown only when printing. */}
+        {selectedStudent && (
+          <div className="hidden print:block space-y-5 text-black">
+            <div>
+              <h1 className="text-xl font-semibold">
+                {selectedStudent.displayName} — {scored ? "Placement Test" : "Check-In"}
+              </h1>
+              <p className="text-sm mt-1">Date: _______________________</p>
+            </div>
+            {items.map((it) => (
+              <div key={it.id} className="break-inside-avoid-page pb-2">
+                <p className="text-sm font-medium">{it.question}</p>
+                {it.kind === "fixed" && <p className="text-sm mt-1">Answer: _______________________</p>}
+                {it.kind === "open" && (
+                  <div className="mt-1 space-y-3">
+                    <div className="border-b border-black h-5" />
+                    <div className="border-b border-black h-5" />
+                  </div>
+                )}
+                {it.kind === "checklist" && <p className="text-sm mt-1">☐ Yes &nbsp;&nbsp;☐ Not yet</p>}
+                {it.kind === "puzzle_level" && (
+                  <p className="text-sm mt-1">
+                    {PUZZLE_LEVELS.map((level) => `☐ ${level}`).join("   ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {selectedStudent && (
+          <div className="space-y-4 print:hidden">
             {items.map((it) => {
               const a = answers[it.id] ?? emptyAnswer();
               return (

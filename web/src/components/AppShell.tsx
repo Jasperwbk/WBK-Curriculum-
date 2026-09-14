@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen" style={{ background: "var(--page)" }}>
       <header
-        className="border-b px-4 py-3 space-y-3"
+        className="border-b px-4 py-3 space-y-3 print:hidden"
         style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
       >
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -57,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
       </header>
-      <main className="p-4 max-w-3xl mx-auto">{children}</main>
+      <main className="p-4 max-w-3xl mx-auto print:p-0 print:max-w-full">{children}</main>
     </div>
   );
 }

@@ -107,3 +107,13 @@ a:focus-visible {
   border-color: var(--series-1);
   box-shadow: 0 0 0 3px var(--series-track-light);
 }
+
+/* Printable worksheets (placement test, etc.) render as a plain document —
+   app chrome hidden, ink-friendly regardless of the on-screen theme. */
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
+
