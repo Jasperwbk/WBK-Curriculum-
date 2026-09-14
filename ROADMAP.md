@@ -299,6 +299,38 @@ design thought whenever it's picked up (how such a link gets attached to a
 unit/objective, how it renders in the student view, whether it's teacher-
 supplied only or something the generator can also suggest).
 
+## 7. Student view: distinct per-login theme, mascot guide, and in-app help assistants
+
+Explicitly flagged as "hold for later" — not scheduled, and confirmed the
+student view is still just the placeholder screen behind a student login
+today (`web/src/pages/StudentPlaceholderPage.tsx`). Three related ideas to
+build whenever this gets picked up:
+
+- **The student view should look and feel distinctly different per login**,
+  not a re-skinned version of the teacher dashboard — fun and kid-engaging
+  rather than a productivity-tool look. Jasper will supply the actual
+  character/imagery to build it around, so don't invent placeholder mascot
+  art in the meantime.
+- **A mascot character acts as an in-app guide/tutor presence** for the
+  student view — likely one of the existing Wolf Blossom Kronicles
+  characters already referenced elsewhere in this repo (Kira for Millaray,
+  Rhoe for Makaio, Nova for Maizley — see
+  `curriculum/seasonal_curriculum_framework.md`), walking a kid through
+  their day rather than a bare list of tasks. Character art still needs to
+  be uploaded before this can be built (same still-outstanding item already
+  tracked in `curriculum/generator_requirements.md`).
+- **A "Guide me" / tutorial button on teacher accounts** — separate from the
+  student-side mascot — that walks Sarah/Jasper through what a screen does
+  and where to go next, for whenever the app has grown past what's
+  self-explanatory at a glance.
+- **A basic integrated LLM assistant on the student side** — explicitly
+  scoped as *site navigation/how-to-use-this-app help*, not a curriculum
+  tutor answering academic questions ("where do I find today's worksheet,"
+  not "explain fractions to me"). Keep this distinction in mind if/when
+  designing it — it's a much smaller, narrower assistant than the
+  curriculum-generation engine itself, closer to an in-app help chat than
+  an AI tutor.
+
 ## Sequencing
 
 None of the above is scheduled. The family wants to build in proper order
