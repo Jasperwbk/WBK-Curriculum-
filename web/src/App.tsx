@@ -5,6 +5,7 @@ import { TeacherDashboardPage } from "./pages/TeacherDashboardPage";
 import { LogActivityPage } from "./pages/LogActivityPage";
 import { PlanDayPage } from "./pages/PlanDayPage";
 import { PlacementTestPage } from "./pages/PlacementTestPage";
+import { CheckInPage } from "./pages/CheckInPage";
 import { StudentPlaceholderPage } from "./pages/StudentPlaceholderPage";
 
 function Gate() {
@@ -40,6 +41,7 @@ function Gate() {
       <Route path="/log" element={<LogActivityPage />} />
       <Route path="/plan" element={<PlanDayPage />} />
       <Route path="/placement" element={<PlacementTestPage />} />
+      <Route path="/checkin" element={<CheckInPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

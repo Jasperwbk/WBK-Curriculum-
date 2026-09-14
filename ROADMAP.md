@@ -139,6 +139,22 @@ sources cited there):
   softer Y/N-per-objective style with no mastery gate, matching her
   existing "participation over mastery" design).
 
+**Update — the mechanism is now built and live, scoped to Week 1 as a
+pilot.** `functions/src/mastery.ts` implements the 2-of-3 threshold as a
+pure, tested function; `functions/src/curriculum/weeklyObjectives.ts`
+transcribes Millaray's and Makaio's Week 1 retrofit objectives + check
+questions (46 total); a new `submitCheckIn` callable and a "Weekly
+check-in" page let the teacher mark each objective got-it/needs-work in the
+moment, which updates `masteryRecords` — the same collection `generatePlan`
+already reads for its mastered/still-building context. Week 1 only, on
+purpose: `millaray_week1_retrofit.md` itself frames Week 1 as a pilot
+("if this shape works for you, I'll carry it through Weeks 2-9"), so this
+proves the mechanism end to end before transcribing the other 8 weeks per
+kid — that transcription (weeks 2-9, both kids) is the concrete next step
+once this pilot has actually been used for a week or two. Maizley stays
+off this mechanism entirely for now, per her track's no-mastery-gate design
+— her Week 1-9 checks remain informal/paper rather than app-tracked.
+
 This still needs one specific per-kid example: notice one kid needs more
 support on fractions in math while doing fine elsewhere, and another is
 solid on fractions but weak on grammar — that's exactly what the

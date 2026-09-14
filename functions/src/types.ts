@@ -148,6 +148,26 @@ export interface PlacementTestRecord {
   subjectBaselines: Partial<Record<Subject, string>>; // e.g. "5/7 correct (71%)"
 }
 
+// --- Ongoing weekly check-ins (continuous reassessment, per
+// learn_practice_test_alignment_standard_v2.md) ---
+//
+// Each retrofit objective carries 1-2 quick, ungraded check questions,
+// asked in the moment during the week's actual activity, not a separate
+// quiz. Scoped to Millaray & Makaio (the scored mastery track) — see
+// curriculum/q1_fall/*_retrofit.md.
+export interface WeeklyObjective {
+  id: string; // e.g. "millaray-w1-math-1"
+  week: number;
+  subject: Subject;
+  skill: string; // the objective itself, e.g. "Weigh/record produce to the nearest oz/lb"
+  checkQuestions: string[]; // asked aloud in the moment; rotate between them if 2+
+}
+
+export interface CheckInItemResult {
+  objectiveId: string;
+  correct: boolean;
+}
+
 export interface UploadRecord {
   familyId: string;
   uploadedBy: string;
