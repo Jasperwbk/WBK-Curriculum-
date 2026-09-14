@@ -26,11 +26,14 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--page)" }}>
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-xl border p-6 space-y-4"
+        className="w-full max-w-sm rounded-2xl border p-6 space-y-4 shadow-lg"
         style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
       >
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>
+        <div className="text-center">
+          <div className="text-3xl mb-1" aria-hidden="true">
+            🌾
+          </div>
+          <h1 className="brand-heading text-xl font-semibold" style={{ color: "var(--text-primary)" }}>
             WBK Homeschool
           </h1>
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>

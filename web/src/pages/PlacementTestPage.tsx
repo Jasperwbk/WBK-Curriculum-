@@ -119,7 +119,7 @@ export function PlacementTestPage() {
     <AppShell>
       <div className="max-w-2xl space-y-6">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+          <h1 className="brand-heading text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             Placement test
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
@@ -172,7 +172,7 @@ export function PlacementTestPage() {
               return (
                 <div
                   key={it.id}
-                  className="rounded-lg border p-3 space-y-2"
+                  className="rounded-lg border p-3 space-y-2 shadow-sm"
                   style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -275,7 +275,7 @@ export function PlacementTestPage() {
 
             {result && result !== "checked_in" && (
               <div
-                className="rounded-lg border p-3 text-sm space-y-1"
+                className="rounded-lg border p-3 text-sm space-y-1 shadow-sm"
                 style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
               >
                 <p className="font-medium" style={{ color: "var(--text-primary)" }}>

@@ -103,7 +103,7 @@ export function LogActivityPage() {
   return (
     <AppShell>
       <div className="max-w-md space-y-4">
-        <h1 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+        <h1 className="brand-heading text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
           {editingId ? "Edit activity" : "Log an activity"}
         </h1>
 
@@ -122,7 +122,7 @@ export function LogActivityPage() {
         {!loadingStudents && students.length > 0 && (
           <form
             onSubmit={handleSubmit}
-            className="rounded-xl border p-4 space-y-4"
+            className="rounded-xl border p-4 space-y-4 shadow-sm"
             style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
           >
             <label className="block text-sm space-y-1">
@@ -268,7 +268,7 @@ export function LogActivityPage() {
                 {logs.map((log) => (
                   <li
                     key={log.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                    className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm"
                     style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
                   >
                     <div>

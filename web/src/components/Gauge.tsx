@@ -27,7 +27,7 @@ export function Gauge({ label, expectedHours, actualHours, balanceHours, status 
 
   return (
     <div
-      className="rounded-lg border p-3"
+      className="rounded-xl border p-3 shadow-sm"
       style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
     >
       <div className="flex items-baseline justify-between gap-2">

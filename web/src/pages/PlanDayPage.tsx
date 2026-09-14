@@ -136,7 +136,7 @@ export function PlanDayPage() {
     <AppShell>
       <div className="max-w-md space-y-6">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+          <h1 className="brand-heading text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             {editingId ? "Edit day plan" : "Plan a day"}
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
@@ -148,7 +148,7 @@ export function PlanDayPage() {
 
         <form
           onSubmit={handleSave}
-          className="rounded-xl border p-4 space-y-4"
+          className="rounded-xl border p-4 space-y-4 shadow-sm"
           style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
         >
           <label className="block text-sm space-y-1">
@@ -294,7 +294,7 @@ export function PlanDayPage() {
               {plans.map((plan) => (
                 <li
                   key={plan.id}
-                  className="rounded-lg border p-3 text-sm space-y-1"
+                  className="rounded-lg border p-3 text-sm space-y-1 shadow-sm"
                   style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
                 >
                   <div className="flex items-start justify-between gap-2">

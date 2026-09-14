@@ -2,61 +2,71 @@
 
 :root {
   color-scheme: light;
-  --surface-1: #fcfcfb;
-  --page: #f9f9f7;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --gridline: #e1e0d9;
-  --baseline: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
+  --font-display: "Fraunces", Georgia, serif;
 
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-critical: #d03b3b;
+  /* Warm parchment/homestead palette instead of a neutral gray SaaS look. */
+  --surface-1: #fffdf8;
+  --surface-2: #f2ead9;
+  --page: #f8f3e8;
+  --text-primary: #2b241d;
+  --text-secondary: #6c5f4f;
+  --text-muted: #9c8f7a;
+  --gridline: #e8ddc6;
+  --baseline: #cdbe9f;
+  --border: rgba(43, 36, 28, 0.13);
 
-  --series-1: #2a78d6;
-  --series-track-light: #cde2fb;
+  --status-good: #3f8f52;
+  --status-warning: #d99a2b;
+  --status-critical: #c1443b;
+
+  /* Deep pine green brand accent — distinct from --status-good's brighter leaf green. */
+  --series-1: #2f6b46;
+  --series-1-hover: #275a3b;
+  --series-track-light: #d7e8db;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface-1: #1a1a19;
-    --page: #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --gridline: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.1);
+    --surface-1: #241e17;
+    --surface-2: #2f2720;
+    --page: #19140f;
+    --text-primary: #f6efe1;
+    --text-secondary: #cbbba0;
+    --text-muted: #94876f;
+    --gridline: #3a3024;
+    --baseline: #4a3d2c;
+    --border: rgba(246, 239, 225, 0.12);
 
-    --status-good: #0ca30c;
-    --status-warning: #fab219;
-    --status-critical: #e66767;
+    --status-good: #57ad6c;
+    --status-warning: #e0ab45;
+    --status-critical: #e07267;
 
-    --series-1: #3987e5;
-    --series-track-light: #184f95;
+    --series-1: #4d9468;
+    --series-1-hover: #5da977;
+    --series-track-light: #234430;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface-1: #1a1a19;
-  --page: #0d0d0d;
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #898781;
-  --gridline: #2c2c2a;
-  --baseline: #383835;
-  --border: rgba(255, 255, 255, 0.1);
+  --surface-1: #241e17;
+  --surface-2: #2f2720;
+  --page: #19140f;
+  --text-primary: #f6efe1;
+  --text-secondary: #cbbba0;
+  --text-muted: #94876f;
+  --gridline: #3a3024;
+  --baseline: #4a3d2c;
+  --border: rgba(246, 239, 225, 0.12);
 
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-critical: #e66767;
+  --status-good: #57ad6c;
+  --status-warning: #e0ab45;
+  --status-critical: #e07267;
 
-  --series-1: #3987e5;
-  --series-track-light: #184f95;
+  --series-1: #4d9468;
+  --series-1-hover: #5da977;
+  --series-track-light: #234430;
 }
 
 body {
@@ -64,4 +74,36 @@ body {
   background: var(--page);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1,
+.brand-heading {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+button {
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease, opacity 0.15s ease;
+}
+button:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+input,
+select,
+textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  border-color: var(--series-1);
+  box-shadow: 0 0 0 3px var(--series-track-light);
 }

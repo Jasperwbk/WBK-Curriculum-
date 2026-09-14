@@ -42,7 +42,7 @@ export function TeacherDashboardPage() {
     <AppShell>
       <div className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+          <h1 className="brand-heading text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             Pace dashboard
           </h1>
           {!loadingStudents && students.length > 0 && (
@@ -98,7 +98,10 @@ export function TeacherDashboardPage() {
               <Gauge {...data.homeCore} />
             </div>
 
-            <details className="rounded-lg border" style={{ borderColor: "var(--border)" }}>
+            <details
+              className="rounded-lg border shadow-sm"
+              style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+            >
               <summary
                 className="cursor-pointer px-3 py-2 text-sm font-medium"
                 style={{ color: "var(--text-secondary)" }}
