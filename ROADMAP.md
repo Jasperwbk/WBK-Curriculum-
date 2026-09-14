@@ -6,23 +6,50 @@ up — not implemented yet, and not to be started opportunistically out of
 sequence. Each note below says what was asked for and what it touches in
 the existing build, so a future session can act on it without re-asking.
 
-## 1. Categorized file upload for the teacher
+## 1. Categorized file upload for the teacher — BUILT
 
-Right now `uploads/{uploadId}` already has a `category` field in the Phase 1
-schema, but there's no UI at all for uploads yet. The ask: don't build one
-generic "Upload file" button — build a few purpose-specific drop
-zones/buttons so the backend already knows what a file is for the moment
-it's dropped, without needing new code for each new file that comes in.
-Requested categories (exact set still open):
-- **System / webpage update** — files related to updating the app/system
-  itself
-- **Curriculum update** — content files like the ones already in
-  `curriculum/` (the Q1 markdown files)
-- **Generic / misc** — a catch-all for anything that doesn't fit the above
+Built as the `/upload` page, with the answer to this section's original
+open question ("does a category do anything beyond tagging?") landing on
+yes for curriculum specifically: dropping in a new quarter's curriculum
+file doesn't just file it away — it's parsed (client-side, deterministic,
+no AI) into `curriculumContent/{familyId}_{kidKey}_{quarter}` and goes
+live for day-plan generation immediately, no code change or deploy. This
+was prompted directly by Jasper wanting Sarah to be able to run the whole
+system independently if he's ever unavailable — "an easy button... drag
+and drop the quarter data... and boom, it's done."
 
-Open question for whenever this gets built: does a category do anything
-beyond tagging + storage location (e.g. should a "curriculum update" upload
-trigger some automatic processing), or is routing/tagging the whole job?
+Two purpose-specific sections, per the original ask:
+- **📚 Upload new quarter curriculum** — per-kid drop zones (Millaray/
+  Makaio/Maizley), a quarter picker (Q1-Q4), a preview of exactly which
+  weeks were found before anything is saved, then one publish button per
+  kid. `web/src/lib/parseCurriculumMarkdown.ts` splits on the same
+  `## Week N — Title` headings the Q1 files already use and pulls
+  per-subject hours out of the table (summing same-subject rows within a
+  week, e.g. Millaray's Weeks 5-9 local-history + government/economics
+  split) — verified against the real Millaray Q1 file: all 9 weeks, all
+  titles, correct hours including the split-strand weeks.
+- **📎 Family documents** — the original "System/Curriculum/Generic"
+  category idea, generalized a bit further (curriculum file / extracurricular
+  record / photo / other) with a simple list of what's already there — "one
+  little brain" for school documents, per the ask, though still just file
+  storage + tagging here, no parsing (unlike the curriculum section above).
+
+`functions/src/curriculum/loadCurriculumContent.ts` (renamed from the Q1-only
+`loadQ1Content.ts`) now checks Firestore first for any quarter, falling back
+to the original bundled Q1 files only when quarter is "q1" and nothing's
+been uploaded there yet — so Q1 keeps working with zero migration, and Q2
+onward is 100% upload-driven.
+
+**Explicitly out of scope for this pass:** the dashboard's per-subject pace
+weighting (`functions/src/curriculum/subjectWeights.ts`) still always uses
+the static Q1 hours baseline for the whole year, not whatever's been
+uploaded for the current quarter — touching that felt like a separate,
+riskier change to make as a side effect of the upload feature rather than
+bundled in. The parser already extracts per-subject hours per week
+(`ParsedWeek.hours`) in anticipation of this, so wiring it in later is a
+matter of reading `curriculumContent` in `computeDashboardData` rather than
+building anything new — worth doing once there's an actual Q2 quarter live
+to weight against.
 
 ## 2. Daily-plan continuity between days
 

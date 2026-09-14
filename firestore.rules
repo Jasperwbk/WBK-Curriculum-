@@ -98,5 +98,15 @@ service cloud.firestore {
       allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
       allow write: if false;
     }
+
+    // Database-backed curriculum content (the "upload a new quarter" flow).
+    // Written directly by the teacher's client after a local, deterministic
+    // parse — no Cloud Function in the loop, same trust level as logs/tests.
+    // generatePlan reads this via the admin SDK, bypassing these rules.
+    match /curriculumContent/{docId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow create: if isTeacherInFamily(request.resource.data.familyId);
+      allow update, delete: if isTeacherInFamily(resource.data.familyId);
+    }
   }
 }

@@ -6,7 +6,7 @@ import { requireCaller, requireTeacher } from "./util/auth";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getDailySubjectAssignments } from "./curriculum/colorSheetRotation";
-import { getQ1WeekNumber, loadWeekContent } from "./curriculum/loadQ1Content";
+import { getQuarterAndWeek, loadWeekContent } from "./curriculum/loadCurriculumContent";
 import { inferKidKey } from "./curriculum/placementTestItems";
 import type { Family, MasteryRecord, PlacementKidKey, Subject, UserProfile } from "./types";
 
@@ -98,13 +98,16 @@ async function buildStudentContext(
 
   const kidKey = inferKidKey(profile.displayName);
   if (kidKey) {
-    const weekNumber = getQ1WeekNumber(schoolYearStart, planDate);
-    const weekContent = weekNumber !== null ? loadWeekContent(kidKey, weekNumber) : null;
-    if (weekContent) {
+    const quarterAndWeek = getQuarterAndWeek(schoolYearStart, planDate);
+    const weekContent = quarterAndWeek
+      ? await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week)
+      : null;
+    if (weekContent && quarterAndWeek) {
       lines.push(
-        `  --- This week's actual curriculum content (Week ${weekNumber}), verbatim from the real Q1 file. ` +
-          `Base today's specific topics/objectives/activities on this — do not invent unrelated topics or ` +
-          `substitute generic homeschool content: ---\n${weekContent}\n  --- end of Week ${weekNumber} content ---`
+        `  --- This week's actual curriculum content (${quarterAndWeek.quarter.toUpperCase()} Week ${quarterAndWeek.week}), ` +
+          `verbatim from the real curriculum file. Base today's specific topics/objectives/activities on this ` +
+          `— do not invent unrelated topics or substitute generic homeschool content: ---\n${weekContent}\n` +
+          `  --- end of curriculum content ---`
       );
     }
 

@@ -155,6 +155,35 @@ export interface PlacementTestRecord {
   subjectBaselines: Partial<Record<Subject, string>>; // e.g. "5/7 correct (71%)"
 }
 
+// --- Database-backed curriculum content (the "upload a new quarter"
+// flow) ---
+//
+// Curriculum content used to live only in files bundled into the deployed
+// function (Q1 only). This lets a teacher upload each new quarter directly
+// from the web app — no code change or deploy required — by dropping in a
+// file for each kid; it's parsed client-side (deterministic, not AI — the
+// source format is consistent enough not to need it) and written straight
+// here. generatePlan reads it at runtime, keyed by which quarter/week a
+// plan's date falls in.
+export type Quarter = "q1" | "q2" | "q3" | "q4";
+
+export interface CurriculumWeekEntry {
+  week: number;
+  title: string;
+  rawContent: string; // the week's full section, verbatim — this is what generatePlan reads
+  hours: Partial<Record<Subject, number>>; // best-effort, parsed from the source table
+}
+
+export interface CurriculumContentDoc {
+  familyId: string;
+  kidKey: PlacementKidKey;
+  quarter: Quarter;
+  weeks: CurriculumWeekEntry[];
+  sourceFileName: string;
+  uploadedBy: string;
+  uploadedAt: Timestamp;
+}
+
 // --- Ongoing weekly check-ins (continuous reassessment, per
 // learn_practice_test_alignment_standard_v2.md) ---
 //
