@@ -99,6 +99,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Raw student-entered placement answers awaiting a teacher's review of
+    // the open-ended items — written only by submitPlacementResponses
+    // (admin SDK, bypasses these rules). The teacher's client deletes the
+    // doc directly once it's been reviewed and finalized into
+    // placementTests via submitPlacementTest.
+    match /placementSubmissions/{submissionId} {
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow delete: if isTeacherInFamily(resource.data.familyId);
+      allow create, update: if false;
+    }
+
     // Database-backed curriculum content (the "upload a new quarter" flow).
     // Written directly by the teacher's client after a local, deterministic
     // parse — no Cloud Function in the loop, same trust level as logs/tests.

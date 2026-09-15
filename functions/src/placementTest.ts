@@ -1,11 +1,13 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
-import { requireCaller, requireTeacher } from "./util/auth";
+import { requireCaller, requireOwnerOrTeacher, requireTeacher } from "./util/auth";
 import { recordMasteryResult } from "./mastery";
 import { PLACEMENT_TEST_ITEMS } from "./curriculum/placementTestItems";
 import type {
   PlacementItemResult,
   PlacementKidKey,
+  PlacementSubmission,
+  PlacementSubmissionItemResult,
   PlacementTestRecord,
   Subject,
   UserProfile,
@@ -195,3 +197,84 @@ export const submitPrintableCheckIn = onCall<SubmitPrintableCheckInRequest>(asyn
 
   return { placementTestId: ref.id };
 });
+
+interface SubmitPlacementResponsesRequest {
+  userId: string;
+  kidKey: "millaray" | "makaio";
+  results: { itemId: string; answerText: string }[];
+}
+
+/**
+ * A kid takes their own placement test, typing an answer to every item.
+ * Fixed/numeric items (math) are graded immediately against the known
+ * correct answer. Open items (reading fluency, reasoning, writing quality)
+ * can't be meaningfully self-graded, so they're captured as typed and left
+ * unscored (`correct: null`) for a teacher to review afterward — see
+ * PlacementSubmission. Self-service: the caller must be the kid themselves
+ * (or a teacher submitting on their behalf), never another student.
+ * Maizley's track stays teacher/parent-administered — not self-service.
+ */
+export const submitPlacementResponses = onCall<SubmitPlacementResponsesRequest>(async (request) => {
+  const caller = await requireCaller(request);
+
+  const { userId, kidKey, results } = request.data ?? {};
+  if (!userId || typeof userId !== "string") {
+    throw new HttpsError("invalid-argument", "userId is required.");
+  }
+  requireOwnerOrTeacher(caller, userId);
+  if (kidKey !== "millaray" && kidKey !== "makaio") {
+    throw new HttpsError("invalid-argument", 'kidKey must be "millaray" or "makaio".');
+  }
+  if (!Array.isArray(results) || results.length === 0) {
+    throw new HttpsError("invalid-argument", "results is required.");
+  }
+
+  const familyId = caller.profile.familyId;
+  await loadTarget(familyId, userId);
+
+  const catalog = PLACEMENT_TEST_ITEMS[kidKey];
+  const catalogById = new Map(catalog.map((i) => [i.id, i]));
+
+  const validatedResults: PlacementSubmissionItemResult[] = results.map((result) => {
+    const catalogItem = catalogById.get(result?.itemId);
+    if (!catalogItem) {
+      throw new HttpsError("invalid-argument", `Unknown item id "${result?.itemId}" for ${kidKey}.`);
+    }
+    const answerText = typeof result.answerText === "string" ? result.answerText.trim() : "";
+    const correct =
+      catalogItem.kind === "fixed" && catalogItem.correctAnswer
+        ? normalizeAnswer(answerText) === normalizeAnswer(catalogItem.correctAnswer)
+        : null;
+    return { itemId: catalogItem.id, answerText, correct };
+  });
+
+  const db = getFirestore();
+  const submission: PlacementSubmission = {
+    familyId,
+    userId,
+    kidKey: kidKey as "millaray" | "makaio",
+    submittedAt: Timestamp.now(),
+    results: validatedResults,
+  };
+  const ref = await db.collection("placementSubmissions").add(submission);
+
+  return { submissionId: ref.id };
+});
+
+/**
+ * Loose match for fixed-answer items so formatting differences ("$8" vs
+ * "8", "3/8 pie left" vs "3/8") don't get marked wrong — strips currency
+ * symbols and common trailing unit words, lowercases, collapses
+ * whitespace. A genuinely wrong numeric answer still won't match; the
+ * teacher review screen shows the kid's raw answer either way, so an
+ * imperfect auto-grade is always easy to catch and override.
+ */
+function normalizeAnswer(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[$,]/g, "")
+    .replace(/\b(pie|left|lb|lbs|oz|dollars?)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

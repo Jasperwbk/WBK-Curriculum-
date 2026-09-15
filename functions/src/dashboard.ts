@@ -110,6 +110,7 @@ export interface DashboardData {
   core: Gauge;
   homeCore: Gauge;
   subjects: Record<Subject, Gauge>;
+  assessmentBaseline: Record<string, string>;
 }
 
 /**
@@ -130,7 +131,8 @@ export async function computeDashboardData(
   familyId: string,
   family: Family,
   targetUserId: string,
-  today: Date
+  today: Date,
+  assessmentBaseline: Record<string, string> = {}
 ): Promise<DashboardData> {
   const { schoolYear } = family;
 
@@ -188,6 +190,7 @@ export async function computeDashboardData(
     core,
     homeCore,
     subjects: Object.fromEntries(subjectEntries) as Record<Subject, Gauge>,
+    assessmentBaseline,
   };
 }
 
@@ -228,5 +231,11 @@ export const getDashboardData = onCall<GetDashboardDataRequest>(async (request) 
     throw new HttpsError("invalid-argument", "asOf must be a valid ISO date.");
   }
 
-  return computeDashboardData(targetProfile.familyId, family, userId, today);
+  return computeDashboardData(
+    targetProfile.familyId,
+    family,
+    userId,
+    today,
+    targetProfile.assessmentBaseline ?? {}
+  );
 });

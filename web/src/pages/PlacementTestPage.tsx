@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { functions } from "../lib/firebase";
+import { collection, deleteDoc, doc, getDocs, query, Timestamp, where } from "firebase/firestore";
+import { db, functions } from "../lib/firebase";
+import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { AppShell } from "../components/AppShell";
 import { subjectLabel } from "../lib/subjects";
@@ -22,6 +24,14 @@ function emptyAnswer(): AnswerState {
   return { correct: false, answerText: "", notes: "", level: PUZZLE_LEVELS[0] };
 }
 
+interface PendingSubmission {
+  id: string;
+  userId: string;
+  kidKey: "millaray" | "makaio";
+  submittedAt: Timestamp;
+  results: { itemId: string; answerText: string; correct: boolean | null }[];
+}
+
 const submitPlacementTestFn = httpsCallable<
   { userId: string; kidKey: "millaray" | "makaio"; date: string; results: unknown[] },
   { placementTestId: string; subjectBaselines: Record<string, string> }
@@ -37,6 +47,7 @@ function todayIso(): string {
 }
 
 export function PlacementTestPage() {
+  const { profile } = useAuth();
   const { students, loading: loadingStudents } = useFamilyStudents();
   const eligible = useMemo(
     () => students.filter((s) => inferKidKey(s.displayName) !== null),
@@ -48,10 +59,53 @@ export function PlacementTestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, string> | "checked_in" | null>(null);
+  const [pending, setPending] = useState<PendingSubmission[]>([]);
+  const [loadingPending, setLoadingPending] = useState(true);
+  const [reviewingSubmissionId, setReviewingSubmissionId] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedId((current) => current ?? eligible[0]?.uid ?? null);
   }, [eligible]);
+
+  async function loadPending() {
+    if (!profile) return;
+    setLoadingPending(true);
+    const snap = await getDocs(
+      query(collection(db, "placementSubmissions"), where("familyId", "==", profile.familyId))
+    );
+    setPending(
+      snap.docs.map((d) => ({
+        id: d.id,
+        userId: d.data().userId,
+        kidKey: d.data().kidKey,
+        submittedAt: d.data().submittedAt,
+        results: d.data().results,
+      }))
+    );
+    setLoadingPending(false);
+  }
+
+  useEffect(() => {
+    loadPending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
+
+  function reviewSubmission(submission: PendingSubmission) {
+    setSelectedId(submission.userId);
+    setResult(null);
+    setError(null);
+    setReviewingSubmissionId(submission.id);
+    const prefilled: Record<string, AnswerState> = {};
+    for (const r of submission.results) {
+      prefilled[r.itemId] = {
+        correct: r.correct === true,
+        answerText: r.answerText,
+        notes: r.answerText,
+        level: PUZZLE_LEVELS[0],
+      };
+    }
+    setAnswers(prefilled);
+  }
 
   const selectedStudent = eligible.find((s) => s.uid === selectedId) ?? null;
   const kidKey: PlacementKidKey | null = selectedStudent
@@ -65,6 +119,7 @@ export function PlacementTestPage() {
     setAnswers({});
     setResult(null);
     setError(null);
+    setReviewingSubmissionId(null);
   }
 
   function updateAnswer(itemId: string, patch: Partial<AnswerState>) {
@@ -96,6 +151,11 @@ export function PlacementTestPage() {
           results,
         });
         setResult(res.data.subjectBaselines);
+        if (reviewingSubmissionId) {
+          await deleteDoc(doc(db, "placementSubmissions", reviewingSubmissionId));
+          setReviewingSubmissionId(null);
+          loadPending();
+        }
       } else {
         const results = items.map((it) => {
           const a = answers[it.id] ?? emptyAnswer();
@@ -134,6 +194,39 @@ export function PlacementTestPage() {
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             No matching student accounts found (expected Millaray, Makaio, or Maizley).
           </p>
+        )}
+
+        {!loadingPending && pending.length > 0 && (
+          <div className="space-y-2 print:hidden">
+            <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+              Waiting on your review
+            </h2>
+            <ul className="space-y-2">
+              {pending.map((sub) => {
+                const kid = eligible.find((s) => s.uid === sub.userId);
+                const openCount = sub.results.filter((r) => r.correct === null).length;
+                return (
+                  <li
+                    key={sub.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm"
+                    style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+                  >
+                    <span style={{ color: "var(--text-primary)" }}>
+                      {kid?.displayName ?? sub.userId} finished their placement test — {openCount}{" "}
+                      answer{openCount === 1 ? "" : "s"} to review
+                    </span>
+                    <button
+                      onClick={() => reviewSubmission(sub)}
+                      className="rounded-md px-3 py-1.5 text-xs font-medium text-white shrink-0"
+                      style={{ background: "var(--series-1)" }}
+                    >
+                      Review now
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
 
         {eligible.length > 0 && (
@@ -204,6 +297,16 @@ export function PlacementTestPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {selectedStudent && reviewingSubmissionId && (
+          <p
+            className="text-sm rounded-md border px-3 py-2 print:hidden"
+            style={{ borderColor: "var(--series-1)", color: "var(--text-secondary)", background: "var(--surface-1)" }}
+          >
+            Reviewing {selectedStudent.displayName}'s own answers below — math is already graded;
+            just judge the open-ended ones and confirm.
+          </p>
         )}
 
         {selectedStudent && (

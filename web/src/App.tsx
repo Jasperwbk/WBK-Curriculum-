@@ -7,7 +7,8 @@ import { PlanDayPage } from "./pages/PlanDayPage";
 import { PlacementTestPage } from "./pages/PlacementTestPage";
 import { CheckInPage } from "./pages/CheckInPage";
 import { UploadPage } from "./pages/UploadPage";
-import { StudentPlaceholderPage } from "./pages/StudentPlaceholderPage";
+import { StudentHomePage } from "./pages/StudentHomePage";
+import { StudentPlacementPage } from "./pages/StudentPlacementPage";
 
 function Gate() {
   const { user, profile, loading } = useAuth();
@@ -31,7 +32,9 @@ function Gate() {
   if (profile?.role === "student") {
     return (
       <Routes>
-        <Route path="*" element={<StudentPlaceholderPage />} />
+        <Route path="/" element={<StudentHomePage />} />
+        <Route path="/placement" element={<StudentPlacementPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
   }

@@ -401,10 +401,33 @@ supplied only or something the generator can also suggest).
 
 ## 7. Student view: distinct per-login theme, mascot guide, and in-app help assistants
 
-Explicitly flagged as "hold for later" — not scheduled, and confirmed the
-student view is still just the placeholder screen behind a student login
-today (`web/src/pages/StudentPlaceholderPage.tsx`). Three related ideas to
-build whenever this gets picked up:
+Originally flagged as "hold for later," then explicitly started once the
+placement test needed a kid to actually take it themselves for real
+end-to-end testing. **What exists now, deliberately scoped to just that:**
+a real student home screen and a self-service placement test flow
+(`web/src/pages/StudentHomePage.tsx`, `StudentPlacementPage.tsx`,
+`StudentShell.tsx`) — Millaray/Makaio log in, get a plain-language
+explanation of what the test is and why ("not something you can fail...
+just helps us pick the best lessons for you"), answer one question at a
+time, and get a "great job!" screen at the end. Math auto-grades instantly;
+open-ended items (reading fluency, reasoning, writing quality — things a
+kid can't meaningfully self-grade) get captured as typed and queued for a
+quick teacher review on the Placement Test page, which now shows a
+"waiting on your review" list and pre-fills the kid's own answers so
+reviewing is fast, not a cold re-administer. Once confirmed, results land
+in the same `assessmentBaseline`/`masteryRecords` pipeline as the
+teacher-administered path did, and now show up persistently on the pace
+dashboard (a "Placement results" panel), not just a one-time toast.
+Maizley's track is untouched — still teacher/parent-led, no self-service,
+per her existing design.
+
+**Deliberately not built as part of this:** a broader "tour every button"
+tutorial (there's genuinely only one thing for a kid to do right now, so a
+fuller tour would be showing off features that don't exist yet — revisit
+once daily lesson plans are actually visible to students), the mascot
+character itself (still waiting on art, per below), the teacher-side
+"Guide me" button, and the site-navigation help assistant. Those three
+ideas below are unchanged from the original note:
 
 - **The student view should look and feel distinctly different per login**,
   not a re-skinned version of the teacher dashboard — fun and kid-engaging

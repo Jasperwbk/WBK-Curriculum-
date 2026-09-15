@@ -155,6 +155,31 @@ export interface PlacementTestRecord {
   subjectBaselines: Partial<Record<Subject, string>>; // e.g. "5/7 correct (71%)"
 }
 
+// --- Self-service placement test submission (student takes it themselves) ---
+//
+// Several placement items (reading fluency, "explain your reasoning,"
+// writing quality) genuinely need an adult's judgment call — a kid can type
+// their own answer, but can't score their own reasoning. So a kid's own
+// submission captures every answer and auto-grades the fixed/numeric items
+// immediately (comparing to the known correctAnswer), but leaves "open"
+// items unscored (`correct: null`) until a teacher reviews what the kid
+// actually wrote and judges it — at which point the teacher's review
+// finalizes into a real PlacementTestRecord via the existing
+// submitPlacementTest path, and this submission is deleted.
+export interface PlacementSubmissionItemResult {
+  itemId: string;
+  answerText: string;
+  correct: boolean | null; // pre-graded for fixed items; null for open items awaiting review
+}
+
+export interface PlacementSubmission {
+  familyId: string;
+  userId: string;
+  kidKey: "millaray" | "makaio"; // Maizley's track stays teacher/parent-administered, not self-service
+  submittedAt: Timestamp;
+  results: PlacementSubmissionItemResult[];
+}
+
 // --- Database-backed curriculum content (the "upload a new quarter"
 // flow) ---
 //

@@ -15,6 +15,7 @@ export interface DashboardData {
   core: GaugeData;
   homeCore: GaugeData;
   subjects: Record<Subject, GaugeData>;
+  assessmentBaseline: Record<string, string>;
 }
 
 export interface FamilyMember {

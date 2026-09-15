@@ -92,6 +92,25 @@ export function TeacherDashboardPage() {
               As of {data.asOf}
             </p>
 
+            {Object.keys(data.assessmentBaseline).length > 0 && (
+              <div
+                className="rounded-lg border p-3 shadow-sm"
+                style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
+              >
+                <h2 className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
+                  Placement results
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  {Object.entries(data.assessmentBaseline).map(([subject, summary]) => (
+                    <p key={subject}>
+                      <span style={{ color: "var(--text-secondary)" }}>{subjectLabel(subject)}: </span>
+                      <span style={{ color: "var(--text-primary)" }}>{summary}</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Gauge {...data.total} />
               <Gauge {...data.core} />
