@@ -388,6 +388,19 @@ locked**, per `curriculum/09_image_bank_and_color_agenda.md` and
   battle gore under social-studies). The color sheet is a separate printable
   from the day's worksheet but travels with it.
 
+**Update (2026-09-18) — this subject-ring system is retired**, per the new
+curriculum specification (`curriculum/gap_analysis_2026-09-18.md` §1):
+Historical Figure Coloring supersedes it as the daily closing-time coloring
+feature, not something running alongside it. `getDailySubjectAssignments`
+is no longer called from `generatePlan`; the code itself stays in
+`functions/src/curriculum/colorSheetRotation.ts`, unused, for rollback.
+The art-complexity-band data above (Band A/B/C) carried over into the new
+system's contract (`functions/src/curriculum/historicalFigureSelector.ts`)
+since it's still the right complexity signal — just no longer tied to a
+subject pick. The actual historical-person selection logic (variety
+weighting, anti-repetition, art preservation) is build-order step 8, not
+built yet.
+
 ## 6. Embedding video / third-party links in curriculum content
 
 Open idea, mechanism not decided: the family wants a way to work videos
