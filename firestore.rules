@@ -181,6 +181,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Exactly-once mastery-application guard + historical traceability
+    // record (build-order step 6.2) — one doc per (evidence packet,
+    // evidence item) actually applied to a mastery record, written only
+    // by curriculum/evidenceMastery.ts's applyEligibleEvidenceToMastery
+    // (admin SDK, bypasses these rules, inside the same transaction as
+    // the masteryRecords write it caused). Same teacher-only reasoning as
+    // masteryRecords/evidencePackets above.
+    match /masteryApplications/{applicationId} {
+      allow read: if isOwner(resource.data.userId) || isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
     // Database-backed curriculum content (the "upload a new quarter" flow).
     // Written directly by the teacher's client after a local, deterministic
     // parse — no Cloud Function in the loop, same trust level as logs/tests.

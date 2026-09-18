@@ -974,16 +974,30 @@ export interface EndOfDayEvidencePacket {
    */
   hoursProjection: ProjectionState;
   masteryProjection: ProjectionState;
-  /**
-   * Which objective-evidence items (identified as "{blockId}:{index within
-   * that block's objectiveEvidence array}", computed the same way on every
-   * attempt — see evidenceMastery.ts#selectMasteryEligibleItems) have
-   * already been turned into a mastery result. A packet-level
-   * masteryProjection.status flag alone can't protect against a crash
-   * between individual mastery writes (see evidenceMastery.ts's doc
-   * comment) — this per-item guard is what actually makes a retry safe:
-   * each eligible item can influence the 2-of-3 window at most once,
-   * ever, no matter how many times reconciliation runs.
-   */
-  appliedMasteryEvidenceIds: string[];
+}
+
+/**
+ * One per (evidence packet, objective-evidence item) that has actually been
+ * applied to a mastery record — deterministic id `${packetId}_${evidenceId}`
+ * (see curriculum/evidenceMastery.ts#masteryApplicationDocId). Written in the
+ * SAME transaction as the masteryRecords update it caused (step 6.2 — this
+ * replaces step 6.1's `appliedMasteryEvidenceIds` array, which was updated
+ * via a SEPARATE, non-atomic write after recordMasteryResult and so left a
+ * real crash window between "mastery record updated" and "marked applied").
+ * This one collection now serves BOTH jobs: the exactly-once idempotency
+ * guard (existence of the doc = already applied, checked inside the same
+ * transaction that would otherwise re-apply it) and the historical record of
+ * which approved evidence item caused which mastery effect. Deliberately
+ * minimal — no evidence content/observation text, just the identifiers
+ * needed to answer "which evidence caused this."
+ */
+export interface MasteryApplicationRecord {
+  packetId: string;
+  evidenceId: string;
+  objectiveId: string;
+  subject: Subject;
+  userId: string;
+  familyId: string;
+  correct: boolean;
+  appliedAt: Timestamp;
 }

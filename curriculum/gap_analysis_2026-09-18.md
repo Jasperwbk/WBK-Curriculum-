@@ -288,7 +288,69 @@ deployed**:
   delivered separately for the complete provenance/dedup rule and
   processing-state lifecycle.
 
-Next up: step 7, only once you've reviewed step 6.1.
+- **Step 6.2 — done, awaiting your review.** One narrowly-scoped
+  verification/hardening task on top of step 6.1, before step 7: mastery
+  projection exactly-once application.
+
+  The crash window step 6.1 was asked to re-verify turned out to be real,
+  confirmed by direct inspection rather than assumed: step 6.1's
+  `applyEligibleEvidenceToMastery` wrote the mastery record
+  (`recordMasteryResult`) and then, as a SEPARATE later call, marked the
+  item applied via `FieldValue.arrayUnion` on the packet doc — two
+  independent Firestore operations with a genuine gap between them. A
+  crash in that gap left the mastery effect landed but the marker not
+  landed, so a retry would re-select and re-apply the same evidence item,
+  double-counting it in the 2-of-3 window. An arrayUnion being atomic by
+  itself never protected against this — the unsafe part was always the
+  separation between the two writes, not either write individually.
+
+  Fix: the old packet-level `appliedMasteryEvidenceIds` array is gone,
+  replaced by a new collection, `masteryApplications/{packetId}_
+  {evidenceId}` (deterministic id), that does both jobs the array used to
+  attempt and one it couldn't — exactly-once guard AND historical
+  traceability (which approved evidence item caused which mastery
+  result). For each eligible item, `evidenceMastery.ts` now opens ONE
+  Firestore transaction that reads the guard doc and the mastery record,
+  and — only if the guard doc doesn't already exist — writes both the
+  next mastery record and the guard/traceability doc together, in the
+  same commit. Firestore's "all reads before all writes" transaction
+  contract is satisfied, and the two writes now succeed or fail as one
+  unit: there is no instant where the mastery effect has landed but the
+  marker hasn't, because they're the same commit. Concurrent
+  reconciliation attempts are also covered: Firestore's own optimistic-
+  concurrency retry ensures only one of two racing transactions can
+  observe the guard doc absent and commit; the other observes it present
+  on retry and no-ops. `mastery.ts` gained a pure `buildNextMasteryRecord`
+  (extracted from `recordMasteryResult`, which is now a thin wrapper
+  around it, unused behavior-wise by its two existing non-transactional
+  callers) so the new transactional path can fold a result into a record
+  it already read inside its own transaction, rather than doing a second,
+  independent read. The 2-of-3/aced threshold logic itself
+  (`applyMasteryResult`) is untouched.
+
+  18 new unit tests (up from 207 to 225): a first-ever `mastery.test.ts`
+  covering the 2-of-3/aced threshold and `buildNextMasteryRecord`
+  directly, plus a new `evidenceMastery.transactions.test.ts` built around
+  a small, explicitly-labeled in-memory Firestore-transaction simulation
+  (real optimistic-concurrency conflict-and-retry semantics, NOT the
+  Firebase emulator — none is available in this sandbox) exercising the
+  real `applyEligibleEvidenceToMastery` orchestration end to end: first
+  application, retry-after-success, two crash-simulation variants, a
+  genuinely concurrent double-invocation, two-items-one-objective, the
+  full 2-of-3 threshold through the transactional path, and excluded
+  evidence never entering mastery. True production crash/concurrency
+  behavior remains not-integration-tested without a live emulator — see
+  the full report for exactly what is and isn't covered.
+
+  One new Firestore rule (`masteryApplications`, teacher/owner-read-only,
+  same pattern as `masteryRecords`); no new composite index needed
+  (single-field equality, auto-indexed, same as `masteryRecords`'s
+  existing `userId` query). Hour handling, dashboard aggregation, and the
+  manual-log warning are untouched. See the full report delivered
+  separately for the crash-window analysis, atomicity guarantee, and
+  complete test list.
+
+Next up: step 7, only once you've reviewed step 6.2.
 
 ---
 

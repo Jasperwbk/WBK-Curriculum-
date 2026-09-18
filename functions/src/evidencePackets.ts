@@ -148,7 +148,6 @@ export const openEvidencePacket = onCall<OpenEvidencePacketRequest>(async (reque
     // pending" fallback purely a defensive extra, not something relied on.
     hoursProjection: initialProjectionState(now),
     masteryProjection: initialProjectionState(now),
-    appliedMasteryEvidenceIds: [],
   };
 
   const db = getFirestore();
@@ -316,7 +315,7 @@ async function runProjections(packetId: string): Promise<void> {
   if (needsProjection(packet.masteryProjection)) {
     await ref.update({ masteryProjection: initialProjectionState(Timestamp.now()) });
     try {
-      await applyEligibleEvidenceToMastery(ref, packet.familyId, packet.studentId, packet.draft);
+      await applyEligibleEvidenceToMastery(ref, packet.familyId, packet.studentId, packetId, packet.draft);
       await ref.update({ masteryProjection: appliedProjectionState(Timestamp.now()) });
     } catch (err) {
       await ref.update({ masteryProjection: failedProjectionState(Timestamp.now(), err) });
@@ -472,8 +471,10 @@ interface ReconcileEvidencePacketRequest {
  * exact same runProjections used right after approval. Idempotent by
  * construction: needsProjection skips anything already "applied", the
  * deterministic hourLogDocId means a hours retry overwrites rather than
- * duplicates, and the per-item appliedMasteryEvidenceIds guard means a
- * mastery retry can only ever apply evidence that hasn't landed yet.
+ * duplicates, and the per-item masteryApplications guard (step 6.2; see
+ * curriculum/evidenceMastery.ts) means a mastery retry can only ever
+ * apply evidence that hasn't landed yet, atomically with its mastery
+ * effect.
  */
 export const reconcileEvidencePacket = onCall<ReconcileEvidencePacketRequest>(async (request) => {
   const caller = await requireCaller(request);

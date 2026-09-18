@@ -31,35 +31,38 @@ export function applyMasteryResult(
   return { recentResults: updated, mastered, aced };
 }
 
-function masteryDocId(userId: string, objectiveId: string): string {
+/** Exported so callers needing the deterministic doc id directly (e.g. a
+ * transactional mastery-application path) don't have to duplicate this. */
+export function masteryRecordDocId(userId: string, objectiveId: string): string {
   return `${userId}_${objectiveId}`;
 }
 
-/**
- * Records one check result against an objective, creating the
- * masteryRecords/{userId}_{objectiveId} doc if it doesn't exist yet.
- * Used both by placement-test intake (seeds the first data point) and,
- * eventually, by the daily continuous-reassessment check-in loop.
- */
-export async function recordMasteryResult(params: {
+export interface RecordMasteryResultParams {
   familyId: string;
   userId: string;
   objectiveId: string;
   subject: Subject;
   skill: string;
   correct: boolean;
-}): Promise<MasteryRecord> {
-  const db = getFirestore();
-  const ref = db.collection("masteryRecords").doc(masteryDocId(params.userId, params.objectiveId));
-  const snap = await ref.get();
-  const existing = snap.exists ? (snap.data() as MasteryRecord) : null;
+}
 
+/**
+ * Pure: folds one new result into a full MasteryRecord, given whatever
+ * record (if any) already exists. Extracted from recordMasteryResult so a
+ * transactional caller can build the next record from a value it read
+ * inside its own transaction, rather than this function doing its own
+ * independent (non-transactional) read.
+ */
+export function buildNextMasteryRecord(
+  existing: MasteryRecord | null,
+  params: RecordMasteryResultParams,
+  now: Timestamp
+): MasteryRecord {
   const { recentResults, mastered, aced } = applyMasteryResult(
     existing?.recentResults ?? [],
     params.correct
   );
-  const now = Timestamp.now();
-  const record: MasteryRecord = {
+  return {
     familyId: params.familyId,
     userId: params.userId,
     objectiveId: params.objectiveId,
@@ -72,6 +75,20 @@ export async function recordMasteryResult(params: {
     acedAt: aced ? (existing?.acedAt ?? now) : null,
     updatedAt: now,
   };
+}
+
+/**
+ * Records one check result against an objective, creating the
+ * masteryRecords/{userId}_{objectiveId} doc if it doesn't exist yet.
+ * Used both by placement-test intake (seeds the first data point) and,
+ * eventually, by the daily continuous-reassessment check-in loop.
+ */
+export async function recordMasteryResult(params: RecordMasteryResultParams): Promise<MasteryRecord> {
+  const db = getFirestore();
+  const ref = db.collection("masteryRecords").doc(masteryRecordDocId(params.userId, params.objectiveId));
+  const snap = await ref.get();
+  const existing = snap.exists ? (snap.data() as MasteryRecord) : null;
+  const record = buildNextMasteryRecord(existing, params, Timestamp.now());
   await ref.set(record);
   return record;
 }

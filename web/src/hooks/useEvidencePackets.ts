@@ -96,7 +96,6 @@ export interface EvidencePacket {
   approvedAt?: Timestamp;
   hoursProjection: ProjectionState;
   masteryProjection: ProjectionState;
-  appliedMasteryEvidenceIds: string[];
 }
 
 /** Every evidencePackets doc for the family, newest date first. */
