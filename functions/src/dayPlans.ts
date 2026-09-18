@@ -251,6 +251,15 @@ function subjectsWhereEveryTrackedObjectiveIsAced(records: MasteryRecord[]): Sub
  * ingestion), which becomes the dayPlans/{planId} doc students only see on
  * or after its date.
  *
+ * dayPlans is a LEGACY/FREEFORM planning tool, kept available for
+ * teacher-prompted one-offs (field trips, special days) — it is explicitly
+ * NOT the authoritative governed school record as of build-order step 4.1.
+ * That role belongs to proposedDays/{proposedDayId} (proposedDays.ts):
+ * generation -> teacher review -> approval -> publication -> historical
+ * record, grounded in certified content rather than a free-text prompt.
+ * The two collections are not synchronized, automatically or otherwise;
+ * see proposedDays.ts's top comment for the full decision.
+ *
  * When studentIds is supplied, the plan is mastery-aware: it pulls each
  * named student's per-objective mastery state and assessment baseline
  * (learn_practice_test_alignment_standard_v2.md) into the prompt, so a

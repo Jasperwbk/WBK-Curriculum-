@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decideGenerationAction, isProposedDayStale } from "./proposedDayLifecycle";
+import { checkDraftRevision, decideGenerationAction, isProposedDayStale } from "./proposedDayLifecycle";
 
 test("no existing proposal -> generate, version 1", () => {
   const decision = decideGenerationAction({
@@ -109,4 +109,57 @@ test("isProposedDayStale: an approved day is never reported stale, even if its s
     isProposedDayStale({ status: "approved", sourceSignature: "cert:abc", currentSourceSignature: "cert:XYZ" }),
     false
   );
+});
+
+// --- checkDraftRevision (build-order step 4.1) ---
+// The same function protects both saveProposedDayDraft's write and
+// approveProposedDay's transactional re-check — by construction, not by
+// two independently-written comparisons that could drift apart. So
+// "stale revision write is rejected" and "stale browser revision cannot
+// accidentally approve over a newer saved draft" are the same test,
+// applied at both call sites in proposedDays.ts.
+
+test("checkDraftRevision: matching revision succeeds and increments deterministically", () => {
+  const result = checkDraftRevision(0, 0);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.nextRevision, 1);
+});
+
+test("checkDraftRevision: increments deterministically across a realistic sequence of saves", () => {
+  let revision = 0;
+  for (let i = 0; i < 5; i++) {
+    const result = checkDraftRevision(revision, revision);
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.nextRevision, revision + 1);
+      revision = result.nextRevision;
+    }
+  }
+  assert.equal(revision, 5);
+});
+
+test("checkDraftRevision: a stale expectedRevision (behind the current one) is rejected", () => {
+  // Simulates: teacher A loaded revision 2, teacher B already saved
+  // revision 3 in the meantime, teacher A's save now arrives claiming
+  // expectedRevision 2 — must be rejected, not silently overwrite.
+  const result = checkDraftRevision(3, 2);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.currentRevision, 3);
+});
+
+test("checkDraftRevision: this exact rejection is what protects approveProposedDay from committing over a newer saved draft", () => {
+  // approveProposedDay re-runs this same check, inside its transaction,
+  // against whatever revision the browser believes is current — a stale
+  // browser copy (expectedRevision behind the real one) is rejected
+  // identically to a stale saveProposedDayDraft call.
+  const browserBelieves = 1;
+  const actuallySavedByOtherTeacher = 2;
+  const result = checkDraftRevision(actuallySavedByOtherTeacher, browserBelieves);
+  assert.equal(result.ok, false);
+});
+
+test("checkDraftRevision: an expectedRevision ahead of the current one is also rejected, not just behind (any mismatch, not just staleness)", () => {
+  const result = checkDraftRevision(1, 2);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.currentRevision, 1);
 });

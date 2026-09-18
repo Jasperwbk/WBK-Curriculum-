@@ -1,16 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { useProposedDays, type ItineraryMode, type ProposedDay } from "../hooks/useProposedDays";
 import { AppShell } from "../components/AppShell";
-
-function twoDaysFromToday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  return d.toISOString().slice(0, 10);
-}
 
 interface GenerateResult {
   studentId: string;
@@ -19,6 +13,11 @@ interface GenerateResult {
   proposalVersion: number | null;
   reason?: string;
 }
+
+const getGenerationTargetDateFn = httpsCallable<{ familyId: string }, { date: string }>(
+  functions,
+  "getGenerationTargetDate"
+);
 
 const generateProposedDaysFn = httpsCallable<
   { familyId: string; date: string; studentIds?: string[]; forceRegenerate?: boolean },
@@ -30,17 +29,23 @@ const checkStalenessFn = httpsCallable<{ proposedDayId: string }, { isStale: boo
   "checkProposedDayStaleness"
 );
 
-const approveProposedDayFn = httpsCallable<
+const saveProposedDayDraftFn = httpsCallable<
   {
     proposedDayId: string;
+    expectedRevision: number;
+    title: string;
+    summary: string;
+    planText: string;
+    jasperMessageEdited?: string;
     itineraryMode: ItineraryMode;
-    jasperMessageOverride?: string;
-    titleOverride?: string;
-    summaryOverride?: string;
-    planTextOverride?: string;
   },
-  { proposedDayId: string }
->(functions, "approveProposedDay");
+  { revision: number }
+>(functions, "saveProposedDayDraft");
+
+const approveProposedDayFn = httpsCallable<{ proposedDayId: string; expectedRevision: number }, { proposedDayId: string }>(
+  functions,
+  "approveProposedDay"
+);
 
 const ACTION_LABEL: Record<GenerateResult["action"], string> = {
   generated: "Generated",
@@ -56,6 +61,18 @@ interface ReviewDraft {
   planText: string;
   jasperMessage: string;
   itineraryMode: ItineraryMode;
+  revision: number;
+}
+
+function draftFromPlan(plan: ProposedDay): ReviewDraft {
+  return {
+    title: plan.draft.title,
+    summary: plan.draft.summary,
+    planText: plan.draft.planText,
+    jasperMessage: plan.draft.jasperMessageEdited ?? plan.jasperMessage?.generated ?? "",
+    itineraryMode: plan.draft.itineraryMode,
+    revision: plan.draft.revision,
+  };
 }
 
 export function ProposedDaysPage() {
@@ -63,7 +80,7 @@ export function ProposedDaysPage() {
   const { students, loading: loadingStudents } = useFamilyStudents();
   const { proposedDays, loading: loadingProposals } = useProposedDays();
 
-  const [date, setDate] = useState(twoDaysFromToday());
+  const [date, setDate] = useState("");
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -73,7 +90,23 @@ export function ProposedDaysPage() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ReviewDraft | null>(null);
   const [staleness, setStaleness] = useState<Record<string, boolean | "checking">>({});
+  const [saving, setSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
   const [approving, setApproving] = useState(false);
+
+  // Prefill the date with the family's actual next instructional-day
+  // target (weekday/DayDesignation-aware) rather than a naive +2-calendar-
+  // days client guess — the teacher can still change it manually.
+  useEffect(() => {
+    if (!profile) return;
+    getGenerationTargetDateFn({ familyId: profile.familyId })
+      .then((res) => setDate(res.data.date))
+      .catch(() => {
+        const fallback = new Date();
+        fallback.setDate(fallback.getDate() + 2);
+        setDate(fallback.toISOString().slice(0, 10));
+      });
+  }, [profile]);
 
   function toggleStudent(uid: string) {
     setSelectedStudentIds((current) => (current.includes(uid) ? current.filter((id) => id !== uid) : [...current, uid]));
@@ -106,19 +139,15 @@ export function ProposedDaysPage() {
 
   function startReview(plan: ProposedDay) {
     setReviewingId(plan.id);
-    setDraft({
-      title: plan.title,
-      summary: plan.summary,
-      planText: plan.planText,
-      jasperMessage: plan.jasperMessage?.edited ?? plan.jasperMessage?.generated ?? "",
-      itineraryMode: plan.itineraryMode ?? plan.suggestedItineraryMode ?? "flexible",
-    });
+    setDraft(draftFromPlan(plan));
     setError(null);
+    setSavedNotice(false);
   }
 
   function cancelReview() {
     setReviewingId(null);
     setDraft(null);
+    setSavedNotice(false);
   }
 
   async function checkFreshness(proposedDayId: string) {
@@ -135,19 +164,37 @@ export function ProposedDaysPage() {
     }
   }
 
+  async function handleSaveDraft(plan: ProposedDay) {
+    if (!draft) return;
+    setSaving(true);
+    setError(null);
+    setSavedNotice(false);
+    try {
+      const res = await saveProposedDayDraftFn({
+        proposedDayId: plan.id,
+        expectedRevision: draft.revision,
+        title: draft.title,
+        summary: draft.summary,
+        planText: draft.planText,
+        jasperMessageEdited: draft.jasperMessage !== (plan.jasperMessage?.generated ?? "") ? draft.jasperMessage : undefined,
+        itineraryMode: draft.itineraryMode,
+      });
+      setDraft({ ...draft, revision: res.data.revision });
+      setSavedNotice(true);
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : null;
+      setError(message ?? "Couldn't save this draft. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleApprove(plan: ProposedDay) {
     if (!draft) return;
     setApproving(true);
     setError(null);
     try {
-      await approveProposedDayFn({
-        proposedDayId: plan.id,
-        itineraryMode: draft.itineraryMode,
-        jasperMessageOverride: plan.jasperMessage && draft.jasperMessage !== plan.jasperMessage.generated ? draft.jasperMessage : undefined,
-        titleOverride: draft.title !== plan.title ? draft.title : undefined,
-        summaryOverride: draft.summary !== plan.summary ? draft.summary : undefined,
-        planTextOverride: draft.planText !== plan.planText ? draft.planText : undefined,
-      });
+      await approveProposedDayFn({ proposedDayId: plan.id, expectedRevision: draft.revision });
       cancelReview();
     } catch (err) {
       const message = err instanceof Error && err.message ? err.message : null;
@@ -165,8 +212,9 @@ export function ProposedDaysPage() {
             Two-day-ahead proposed days
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-            Generates a governed, certified-curriculum-grounded day per student, roughly two days ahead. Every
-            proposal stays a draft — nothing reaches a student until you review and approve it here.
+            Generates a governed, certified-curriculum-grounded day per student, roughly two instructional days
+            ahead. Every proposal stays a draft — nothing reaches a student until you review and approve it here.
+            Review edits save as a draft, so it's safe to close the app and come back later.
           </p>
         </div>
 
@@ -217,7 +265,7 @@ export function ProposedDaysPage() {
             {generating ? "Generating..." : "Generate proposed days"}
           </button>
 
-          {error && (
+          {error && !reviewingId && (
             <p className="text-sm" style={{ color: "var(--status-critical)" }}>
               {error}
             </p>
@@ -274,9 +322,10 @@ export function ProposedDaysPage() {
                         {plan.status === "approved" ? "Approved & published" : "Pending review"}
                         {" · "}
                         {plan.dayType === "ordinary" ? "Ordinary school day" : plan.dayType === "alternativePackage" ? "Alternative package" : "Non-instructional day"}
-                        {plan.itineraryMode ?? plan.suggestedItineraryMode
-                          ? ` · ${plan.itineraryMode ?? plan.suggestedItineraryMode} itinerary${plan.itineraryMode ? "" : " (suggested)"}`
-                          : ""}
+                        {plan.status === "approved" && plan.itineraryMode
+                          ? ` · ${plan.itineraryMode} itinerary`
+                          : ` · ${plan.draft.itineraryMode} itinerary (draft)`}
+                        {!plan.status || plan.status === "proposed" ? ` · draft rev. ${plan.draft.revision}` : ""}
                       </div>
                     </div>
                     <div className="flex gap-1 shrink-0">
@@ -307,7 +356,9 @@ export function ProposedDaysPage() {
                     </p>
                   )}
 
-                  <p style={{ color: "var(--text-secondary)" }}>{plan.summary}</p>
+                  <p style={{ color: "var(--text-secondary)" }}>
+                    {plan.status === "proposed" ? plan.draft.summary : plan.summary}
+                  </p>
 
                   {isReviewing && draft && (
                     <div className="space-y-3 border-t pt-3" style={{ borderColor: "var(--border)" }}>
@@ -341,6 +392,11 @@ export function ProposedDaysPage() {
                             className="w-full rounded-md border px-3 py-2 text-sm"
                             style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--page)" }}
                           />
+                          {plan.jasperMessage && (
+                            <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
+                              Original generated message is preserved even if you edit this.
+                            </span>
+                          )}
                         </label>
                       )}
                       <label className="block text-sm space-y-1">
@@ -376,16 +432,41 @@ export function ProposedDaysPage() {
                         </div>
                       </div>
 
-                      {error && (
-                        <p className="text-sm" style={{ color: "var(--status-critical)" }}>
-                          {error}
+                      {savedNotice && (
+                        <p className="text-xs" style={{ color: "var(--status-good)" }}>
+                          Draft saved (revision {draft.revision}). Safe to close and come back — your edits are kept.
                         </p>
+                      )}
+                      {error && (
+                        <div className="space-y-1">
+                          <p className="text-sm" style={{ color: "var(--status-critical)" }}>
+                            {error}
+                          </p>
+                          {error.toLowerCase().includes("revision") && (
+                            <button
+                              type="button"
+                              onClick={() => startReview(plan)}
+                              className="text-xs font-medium underline"
+                              style={{ color: "var(--series-1)" }}
+                            >
+                              Load the latest saved draft
+                            </button>
+                          )}
+                        </div>
                       )}
 
                       <div className="flex gap-2">
                         <button
+                          onClick={() => handleSaveDraft(plan)}
+                          disabled={saving || approving}
+                          className="flex-1 rounded-md border px-3 py-2 text-sm font-medium disabled:opacity-60"
+                          style={{ borderColor: "var(--series-1)", color: "var(--series-1)" }}
+                        >
+                          {saving ? "Saving..." : "Save draft"}
+                        </button>
+                        <button
                           onClick={() => handleApprove(plan)}
-                          disabled={approving}
+                          disabled={approving || saving}
                           className="flex-1 rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                           style={{ background: "var(--series-1)" }}
                         >
@@ -396,7 +477,7 @@ export function ProposedDaysPage() {
                           className="rounded-md border px-3 py-2 text-sm font-medium"
                           style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
                         >
-                          Cancel
+                          Close
                         </button>
                       </div>
                     </div>

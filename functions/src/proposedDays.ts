@@ -13,7 +13,9 @@ import {
 import { getCurriculumGovernanceMode } from "./curriculum/curriculumGovernance";
 import { getDayDesignationsForDate } from "./curriculum/dayDesignation";
 import { hashText } from "./curriculum/contentHash";
-import { decideGenerationAction, isProposedDayStale } from "./curriculum/proposedDayLifecycle";
+import { checkDraftRevision, decideGenerationAction, isProposedDayStale } from "./curriculum/proposedDayLifecycle";
+import { getGenerationLeadDays } from "./curriculum/generationSchedule";
+import { computeInstructionalGenerationTargetDate } from "./curriculum/instructionalCalendar";
 import { buildStudentContext, type StudentContext } from "./dayPlans";
 import type {
   Family,
@@ -21,6 +23,7 @@ import type {
   JasperMessage,
   LearningBlockSummary,
   ProposedDay,
+  ProposedDayDraft,
   ProposedDayType,
   UserProfile,
 } from "./types";
@@ -28,35 +31,77 @@ import type {
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
 /**
- * Two-day-ahead governed daily proposal pipeline (build-order step 4):
+ * Two-day-ahead governed daily proposal pipeline (build-order step 4,
+ * hardened in step 4.1):
  *
  *   certified quarter -> certified week -> proposed day (this file)
- *   -> teacher review/edit -> teacher approval -> published student day
+ *   -> teacher review/edit (draft) -> teacher approval -> published
+ *   student day -> historical approved-day record
  *
- * A parallel system to the existing dayPlans/{planId} collection
- * (generatePlan/PlanDayPage.tsx), not a replacement of it — dayPlans stays
- * exactly as it is for freeform, teacher-prompted, often multi-kid days
- * (field trips, special one-offs). ProposedDay is a different shape for a
- * genuinely different job: one per (family, student, school date),
- * generated ahead of time FROM certified content rather than a teacher's
- * free-text prompt, carrying the version/traceability/approval metadata
- * the governed pipeline needs. Both reuse the same underlying pieces —
- * buildStudentContext (dayPlans.ts) for the identical per-student
- * certification-gate decision, the same Anthropic model, the same
- * approvals.ts primitive for the actual approve action — rather than
- * duplicating that logic twice.
+ * ARCHITECTURAL DECISION (step 4.1, recorded here per that instruction):
+ * proposedDays is now the authoritative path for governed WBK schooling —
+ * generation, teacher review, approval, publication, and the historical
+ * approved-day record all live here going forward. The existing
+ * dayPlans/{planId} collection (generatePlan/PlanDayPage.tsx) remains
+ * available as a legacy/freeform planning tool — teacher-prompted,
+ * often multi-student, no certification/versioning/approval metadata —
+ * but it is NOT an equally-authoritative second school record. The two
+ * are not synchronized with each other, automatically or otherwise, and
+ * dayPlans was not migrated, narrowed, or rewritten in step 4.1: whether
+ * it's eventually renamed, narrowed in scope, migrated into this system,
+ * or retired is an explicit later decision, not implied by this one.
+ * Both reuse the same underlying pieces where it matters — buildStudentContext
+ * (dayPlans.ts) for the identical per-student certification-gate decision,
+ * the same Anthropic model, the same approvals.ts primitive for the
+ * actual approve action — rather than duplicating that logic twice; that
+ * code-level reuse is independent of which collection is authoritative.
  *
  * This step deliberately builds three separate layers, per the request:
- *   A. computeGenerationTargetDate / decideGenerationAction
- *      (generationSchedule.ts / proposedDayLifecycle.ts) — pure, no I/O.
+ *   A. computeInstructionalGenerationTargetDate / decideGenerationAction
+ *      (instructionalCalendar.ts / proposedDayLifecycle.ts) — pure
+ *      decision logic, no I/O (instructionalCalendar.ts's async wrapper
+ *      is the one exception that must consult DayDesignation records).
  *   B. generateProposedDays (this file) — the callable/service that
  *      actually does it, invoked manually (by a teacher, from the UI)
  *      for now.
  *   C. Automatic scheduled invocation — NOT built. No Cloud Scheduler/
  *      cron job exists yet; generateProposedDays is just as valid to call
  *      from a future scheduled function as it is from a button today, but
- *      that trigger itself is out of scope for step 4.
+ *      that trigger itself is out of scope for step 4/4.1.
  */
+
+interface GetGenerationTargetDateRequest {
+  familyId: string;
+}
+
+/**
+ * Read-only: "what's the next instructional-day-aware target date for
+ * this family, right now" — the family's configured lead time
+ * (generationSchedule.ts) walked forward via instructionalCalendar.ts.
+ * Used by the teacher UI to prefill its date picker's default (replacing
+ * a plain +2-calendar-days client calculation from step 4, which couldn't
+ * account for weekends or DayDesignations at all).
+ */
+export const getGenerationTargetDate = onCall<GetGenerationTargetDateRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const { familyId } = request.data ?? {};
+  if (!familyId || typeof familyId !== "string") {
+    throw new HttpsError("invalid-argument", "familyId is required.");
+  }
+  requireSameFamily(caller, familyId);
+
+  const db = getFirestore();
+  const familySnap = await db.collection("families").doc(familyId).get();
+  if (!familySnap.exists) {
+    throw new HttpsError("failed-precondition", "No such family.");
+  }
+  const family = familySnap.data() as Family;
+  const leadDays = getGenerationLeadDays(family);
+  const date = await computeInstructionalGenerationTargetDate(familyId, new Date(), leadDays);
+  return { date };
+});
 
 interface GenerateProposedDaysRequest {
   familyId: string;
@@ -383,6 +428,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
           }
 
           const ref = db.collection("proposedDays").doc();
+          const generatedAt = Timestamp.now();
           const doc: ProposedDay = {
             familyId,
             studentId,
@@ -398,7 +444,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
             status: "proposed",
             proposalVersion: decision.nextVersion,
             supersedesProposalId: decision.supersedesProposalId,
-            generatedAt: Timestamp.now(),
+            generatedAt,
             generatedByUid: caller.uid,
             title: generated.title,
             summary: generated.summary,
@@ -407,6 +453,18 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
             suggestedItineraryMode: dayType === "nonInstructional" ? null : generated.suggestedItineraryMode,
             learningBlocks: generated.learningBlocks,
             carryForwardNotes: [],
+            // Seeded as an exact copy of the generated values — revision 0
+            // means "never actually edited by a teacher yet." See
+            // types.ts's ProposedDayDraft doc comment.
+            draft: {
+              title: generated.title,
+              summary: generated.summary,
+              planText: generated.planText,
+              itineraryMode: generated.suggestedItineraryMode ?? "flexible",
+              revision: 0,
+              lastEditedByUid: caller.uid,
+              lastEditedAt: generatedAt,
+            },
           };
           await ref.set(doc);
 
@@ -456,13 +514,113 @@ export const checkProposedDayStaleness = onCall<CheckProposedDayStalenessRequest
   return { isStale: await checkStalenessInternal(doc) };
 });
 
+interface SaveProposedDayDraftRequest {
+  proposedDayId: string;
+  expectedRevision: number;
+  title: string;
+  summary: string;
+  planText: string;
+  jasperMessageEdited?: string;
+  itineraryMode: ItineraryMode;
+}
+
+/**
+ * Preserves the teacher's in-progress review edits across navigating away
+ * and coming back (build-order step 4.1 — the gap step 4 originally left:
+ * edits were lost if the teacher didn't approve before leaving). Never
+ * touches the doc's original generated title/summary/planText/
+ * jasperMessage.generated — only the separate `draft` sub-object. Requires
+ * a Cloud Function write (this callable) rather than opening direct
+ * client writes to proposedDays, same trust model as every other
+ * governance collection here.
+ *
+ * Optimistic concurrency: the caller supplies `expectedRevision` — the
+ * draft revision it believes is currently saved (whatever it last read).
+ * If a newer revision is already saved (e.g. the other teacher account
+ * saved a change in the meantime), this is rejected with a clear message
+ * rather than silently overwriting it. Checked and written inside one
+ * transaction so two simultaneous saves can't both "win".
+ */
+export const saveProposedDayDraft = onCall<SaveProposedDayDraftRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const { proposedDayId, expectedRevision, title, summary, planText, jasperMessageEdited, itineraryMode } =
+    request.data ?? {};
+  if (!proposedDayId || typeof proposedDayId !== "string") {
+    throw new HttpsError("invalid-argument", "proposedDayId is required.");
+  }
+  if (typeof expectedRevision !== "number" || expectedRevision < 0) {
+    throw new HttpsError("invalid-argument", "expectedRevision is required.");
+  }
+  if (typeof title !== "string" || typeof summary !== "string" || typeof planText !== "string") {
+    throw new HttpsError("invalid-argument", "title, summary, and planText are required strings.");
+  }
+  if (itineraryMode !== "strict" && itineraryMode !== "flexible") {
+    throw new HttpsError("invalid-argument", 'itineraryMode must be "strict" or "flexible".');
+  }
+
+  const db = getFirestore();
+  const ref = db.collection("proposedDays").doc(proposedDayId);
+
+  // Family/status/latest-version checks up front, with clear messages,
+  // before the transactional revision check below.
+  const preSnap = await ref.get();
+  if (!preSnap.exists) {
+    throw new HttpsError("not-found", "No such proposed day.");
+  }
+  const preDoc = preSnap.data() as ProposedDay;
+  requireSameFamily(caller, preDoc.familyId);
+  if (preDoc.status !== "proposed") {
+    throw new HttpsError("failed-precondition", "This day is already approved — drafts can no longer be edited.");
+  }
+  const latest = await getLatestProposedDay(preDoc.familyId, preDoc.studentId, preDoc.date);
+  if (!latest || latest.id !== proposedDayId) {
+    throw new HttpsError(
+      "failed-precondition",
+      "A newer proposal exists for this student/date — review that one instead of an older version."
+    );
+  }
+
+  let newRevision = -1;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "No such proposed day.");
+    }
+    const doc = snap.data() as ProposedDay;
+    if (doc.status !== "proposed") {
+      throw new HttpsError("failed-precondition", "This day is already approved — drafts can no longer be edited.");
+    }
+    const revisionCheck = checkDraftRevision(doc.draft.revision, expectedRevision);
+    if (!revisionCheck.ok) {
+      throw new HttpsError(
+        "failed-precondition",
+        `Someone else saved changes since you last loaded this proposal (current revision ` +
+          `${revisionCheck.currentRevision}, expected ${expectedRevision}). Refresh and review the latest draft ` +
+          `before saving again.`
+      );
+    }
+    newRevision = revisionCheck.nextRevision;
+    const newDraft: ProposedDayDraft = {
+      title,
+      summary,
+      planText,
+      ...(jasperMessageEdited !== undefined ? { jasperMessageEdited } : {}),
+      itineraryMode,
+      revision: newRevision,
+      lastEditedByUid: caller.uid,
+      lastEditedAt: Timestamp.now(),
+    };
+    tx.update(ref, { draft: newDraft });
+  });
+
+  return { revision: newRevision };
+});
+
 interface ApproveProposedDayRequest {
   proposedDayId: string;
-  itineraryMode: ItineraryMode;
-  jasperMessageOverride?: string;
-  titleOverride?: string;
-  summaryOverride?: string;
-  planTextOverride?: string;
+  expectedRevision: number;
 }
 
 interface ApproveProposedDayPayload {
@@ -470,31 +628,38 @@ interface ApproveProposedDayPayload {
   proposedDayId: string;
   studentId: string;
   date: string;
+  expectedRevision: number;
 }
 
 /**
  * Generate Proposal -> Review -> Edit -> Select Strict/Flexible -> Edit
- * Jasper Message if desired -> Approve -> Publish, all as one deliberate
- * teacher action (the edits are supplied as this call's own overrides
- * rather than persisted through a separate mid-review write — see this
- * file's top comment and proposedDays firestore.rules for why: keeps
- * proposedDays entirely Cloud-Function-write-only, like every other
- * governance collection here, with no separate "editable while pending"
- * write path to secure). Refuses to approve a proposal that's gone stale
- * since it was generated (requirement 8) — the teacher regenerates first.
- * Either authorized teacher may approve, alone.
+ * Jasper Message if desired -> Save Draft (any number of times) -> Approve
+ * -> Publish. Approves the CURRENT SAVED DRAFT (build-order step 4.1) —
+ * not ad hoc content passed to this call — so there's exactly one place
+ * ("draft") that ever holds "what will actually be published," whether
+ * the teacher edited anything or not (a draft always exists, seeded at
+ * generation). Refuses to approve a proposal that's gone stale since it
+ * was generated (requirement 8 from step 4) — the teacher regenerates
+ * first. Either authorized teacher may approve, alone.
+ *
+ * `expectedRevision` protects against approving a stale browser copy: if
+ * the draft the caller last saw isn't the one currently saved (e.g. the
+ * other teacher account saved a newer edit after this browser loaded the
+ * review screen but before clicking Approve), this is rejected — verified
+ * with a fresh read INSIDE the same transaction that commits the
+ * approval, not just a pre-check, so a save landing in that exact window
+ * can't slip through.
  */
 export const approveProposedDay = onCall<ApproveProposedDayRequest>(async (request) => {
   const caller = await requireCaller(request);
   requireTeacher(caller);
 
-  const { proposedDayId, itineraryMode, jasperMessageOverride, titleOverride, summaryOverride, planTextOverride } =
-    request.data ?? {};
+  const { proposedDayId, expectedRevision } = request.data ?? {};
   if (!proposedDayId || typeof proposedDayId !== "string") {
     throw new HttpsError("invalid-argument", "proposedDayId is required.");
   }
-  if (itineraryMode !== "strict" && itineraryMode !== "flexible") {
-    throw new HttpsError("invalid-argument", 'itineraryMode must be "strict" or "flexible".');
+  if (typeof expectedRevision !== "number" || expectedRevision < 0) {
+    throw new HttpsError("invalid-argument", "expectedRevision is required.");
   }
 
   const db = getFirestore();
@@ -532,25 +697,32 @@ export const approveProposedDay = onCall<ApproveProposedDayRequest>(async (reque
     targetUserId: doc.studentId,
     proposedByUid: caller.uid,
     proposedByRole: "teacher",
-    payload: { familyId: doc.familyId, proposedDayId, studentId: doc.studentId, date: doc.date },
+    payload: { familyId: doc.familyId, proposedDayId, studentId: doc.studentId, date: doc.date, expectedRevision },
   });
 
   await approveProposal<ApproveProposedDayPayload>({
     proposalId,
     reviewerUid: caller.uid,
-    commit: (tx) => {
-      const jasperMessage: JasperMessage | null = doc.jasperMessage
-        ? { generated: doc.jasperMessage.generated, ...(jasperMessageOverride ? { edited: jasperMessageOverride } : {}) }
-        : null;
+    commit: async (tx) => {
+      // Fresh read, INSIDE this transaction — a second read before any
+      // writes is fine (approveProposal already read the Proposal doc
+      // first) — so a draft saved in the gap between our pre-check above
+      // and this commit actually running can't be silently approved over.
+      const freshSnap = await tx.get(ref);
+      const freshDoc = freshSnap.data() as ProposedDay;
+      const revisionCheck = checkDraftRevision(freshDoc.draft.revision, expectedRevision);
+      if (!revisionCheck.ok) {
+        throw new HttpsError(
+          "failed-precondition",
+          `A newer draft (revision ${revisionCheck.currentRevision}) was saved since you loaded this proposal — ` +
+            `review it before approving.`
+        );
+      }
       tx.update(ref, {
         status: "approved",
         approvedByUid: caller.uid,
         approvedAt: Timestamp.now(),
-        itineraryMode,
-        jasperMessage,
-        ...(titleOverride ? { title: titleOverride } : {}),
-        ...(summaryOverride ? { summary: summaryOverride } : {}),
-        ...(planTextOverride ? { planText: planTextOverride } : {}),
+        itineraryMode: freshDoc.draft.itineraryMode,
       });
     },
   });

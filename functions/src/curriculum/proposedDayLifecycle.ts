@@ -95,3 +95,20 @@ export function isProposedDayStale(params: {
 }): boolean {
   return params.status === "proposed" && params.sourceSignature !== params.currentSourceSignature;
 }
+
+/**
+ * Draft optimistic-concurrency check (build-order step 4.1) — the exact
+ * same decision protects both saveProposedDayDraft (rejecting a stale
+ * write) and approveProposedDay's transactional re-check (rejecting
+ * approval of a stale browser copy), by construction rather than by two
+ * independently-written comparisons that could drift apart.
+ */
+export type DraftRevisionCheck =
+  | { ok: true; nextRevision: number }
+  | { ok: false; currentRevision: number };
+
+export function checkDraftRevision(currentRevision: number, expectedRevision: number): DraftRevisionCheck {
+  return currentRevision === expectedRevision
+    ? { ok: true, nextRevision: currentRevision + 1 }
+    : { ok: false, currentRevision };
+}

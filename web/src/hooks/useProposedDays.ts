@@ -17,6 +17,17 @@ export interface LearningBlockSummary {
   description: string;
 }
 
+export interface ProposedDayDraft {
+  title: string;
+  summary: string;
+  planText: string;
+  jasperMessageEdited?: string;
+  itineraryMode: ItineraryMode;
+  revision: number;
+  lastEditedByUid: string;
+  lastEditedAt: Timestamp;
+}
+
 export interface ProposedDay {
   id: string;
   familyId: string;
@@ -30,13 +41,16 @@ export interface ProposedDay {
   proposalVersion: number;
   supersedesProposalId: string | null;
   generatedAt: Timestamp;
+  /** Original AI-generated content — never overwritten. The teacher's current working copy is `draft` below. */
   title: string;
   summary: string;
   planText: string;
   jasperMessage: JasperMessage | null;
   suggestedItineraryMode: ItineraryMode | null;
-  itineraryMode?: ItineraryMode;
   learningBlocks: LearningBlockSummary[];
+  /** The teacher's review copy — current from generation through approval. See saveProposedDayDraft/approveProposedDay. */
+  draft: ProposedDayDraft;
+  itineraryMode?: ItineraryMode;
   approvedByUid?: string;
   approvedAt?: Timestamp;
 }

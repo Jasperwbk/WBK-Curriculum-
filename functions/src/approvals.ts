@@ -74,9 +74,12 @@ interface ApproveProposalParams<T> {
    * Runs inside the same transaction as the status update — do any reads
    * this needs before any writes (Firestore transactions require all
    * reads before all writes), since the proposal doc itself is already
-   * read before this is called.
+   * read before this is called. May be async (e.g. a fresh tx.get() of
+   * its own target document, to re-verify a concurrency check right
+   * before writing) — it's awaited by the caller either way, so a plain
+   * synchronous commit works exactly as before.
    */
-  commit: (tx: Transaction, payload: T) => void;
+  commit: (tx: Transaction, payload: T) => void | Promise<void>;
 }
 
 /** Approves a pending proposal: commits its payload and marks it approved, atomically. */
@@ -98,7 +101,7 @@ export async function approveProposal<T>(params: ApproveProposalParams<T>): Prom
 
     const wasEdited = params.editedPayload !== undefined;
     const finalPayload = wasEdited ? (params.editedPayload as T) : proposal.payload;
-    params.commit(tx, finalPayload);
+    await params.commit(tx, finalPayload);
 
     tx.update(proposalRef, {
       status: "approved",

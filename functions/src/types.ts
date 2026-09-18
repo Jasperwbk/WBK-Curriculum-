@@ -525,12 +525,17 @@ export interface ProposedDay {
   generatedAt: Timestamp;
   generatedByUid: string;
 
+  // --- Original AI-generated content — set once at generation, NEVER
+  // overwritten afterward (build-order step 4.1: "do not overwrite/
+  // destroy the generated source"). The teacher's current working copy
+  // lives entirely in `draft` below; these fields exist purely as the
+  // permanent original for reference/audit. ---
   title: string;
   summary: string;
   planText: string;
-  /** null only for a "nonInstructional" day. */
+  /** null only for a "nonInstructional" day. Only ever has `.generated` — a teacher's edit lives in draft.jasperMessageEdited, never written back here. */
   jasperMessage: JasperMessage | null;
-  /** Claude's suggestion at generation time — the teacher can accept or override it; see itineraryMode below. */
+  /** Claude's suggestion at generation time. */
   suggestedItineraryMode: ItineraryMode | null;
   learningBlocks: LearningBlockSummary[];
   /**
@@ -542,8 +547,34 @@ export interface ProposedDay {
    */
   carryForwardNotes: string[];
 
-  // --- Set only once approved (undefined before that) ---
+  /**
+   * The teacher's current review copy (build-order step 4.1) — the single
+   * source of truth for "what's actually current" from generation through
+   * approval and beyond. Seeded from the generated values above at
+   * generation time (so it always exists, even before any teacher touches
+   * it), mutated only by saveProposedDayDraft while status is "proposed",
+   * and simply left as-is (no longer editable) once approved — its
+   * content at that moment IS the final approved/published version. See
+   * proposedDays.ts for the optimistic-concurrency (revision) protection.
+   */
+  draft: ProposedDayDraft;
+
+  // --- Set only once approved (undefined before that) — a small summary
+  // of the approval itself; the actual final content is draft above. ---
   itineraryMode?: ItineraryMode;
   approvedByUid?: string;
   approvedAt?: Timestamp;
+}
+
+export interface ProposedDayDraft {
+  title: string;
+  summary: string;
+  planText: string;
+  /** The teacher's edited Jasper text, distinct from jasperMessage.generated — undefined until a teacher actually changes it from the generated text. */
+  jasperMessageEdited?: string;
+  itineraryMode: ItineraryMode;
+  /** 0 for the seeded, never-actually-edited copy created at generation time; increments by 1 on each saveProposedDayDraft call. */
+  revision: number;
+  lastEditedByUid: string;
+  lastEditedAt: Timestamp;
 }
