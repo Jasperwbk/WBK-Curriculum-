@@ -265,7 +265,8 @@ export type ProposalKind =
   | "hourApproval"
   | "calendarChange"
   | "extracurricular"
-  | "placementSubmission";
+  | "placementSubmission"
+  | "assessmentEligibilityChange";
 
 export type ProposalStatus = "pending" | "approved" | "rejected";
 
@@ -483,10 +484,131 @@ export interface JasperMessage {
   edited?: string;
 }
 
-/** Deliberately lightweight — step 5 deepens this into a real block/objective engine; step 4 only needs enough to display and to distinguish strict/flexible eligibility later. */
-export interface LearningBlockSummary {
+// --- Block/objective-level day structure (Builder Guide's learning cycle;
+// build-order step 5) ---
+//
+// Replaces step 4's placeholder LearningBlockSummary with a real
+// instructional block model. The locked learning cycle (initial hypothesis
+// -> objective -> teach/model -> guided practice -> independent attempt ->
+// actionable feedback -> retrieval -> spaced/interleaved revisit ->
+// delayed retention -> application/transfer -> reflection/metacognition ->
+// evidence update -> confidence-weighted adaptation proposal -> teacher
+// authority -> next learning cycle) plays out ACROSS MULTIPLE DAYS/blocks,
+// not within a single one — a single block only needs to represent ONE
+// stage of it. `stage` says which one; `dependsOn` and carry-forward (see
+// below) are what let an objective's movement through the cycle span
+// several proposed days.
+
+export type InstructionalStage =
+  | "warmup_retrieval"
+  | "teach_model"
+  | "guided_practice"
+  | "independent_practice"
+  | "assessment_check"
+  | "application_transfer"
+  | "reflection_metacognition"
+  | "enrichment";
+
+// "not_started"/"in_progress"/"completed" are the states a future block-
+// completion recorder (step 6's end-of-day evidence packet) will actually
+// write — nothing in step 5 writes anything but "not_started" at
+// generation time. "carried_forward" is reserved for step 6 to mark a NEW
+// day's block that itself already represents carried-forward work, kept
+// distinct from ordinary not-yet-attempted work.
+export type BlockCompletionState = "not_started" | "in_progress" | "completed" | "carried_forward";
+
+/** Why a retrieval/warm-up block exists — represented so evidence isn't misread as regression (interleaving is expected to raise the error rate, on purpose). */
+export type RetrievalReason =
+  | "recent_retrieval"
+  | "spaced_revisit"
+  | "interleaved_practice"
+  | "delayed_retention_check";
+
+/** Distinguishes what KIND of evidence a block's check produces, for later evidence consumers — not itself a grade. */
+export type RemediationIntent = "initial_instruction" | "retrieval" | "remediation" | "assessment";
+
+export type ActivityFormat = "printable" | "hands_on" | "digital" | "discussion";
+
+/** A prerequisite block within the SAME proposed day — see certificationGate.ts's "avoid a huge scheduling engine" spirit: cross-day dependencies are handled by carry-forward, not by dependency edges spanning days. */
+export interface BlockDependency {
+  blockId: string;
+}
+
+/**
+ * Where a block's work came from a PRIOR day that didn't finish it —
+ * requirement 6 (build-order step 5): incomplete required work stays
+ * incomplete, is never auto-completed or erased, and may carry forward.
+ * Deliberately conservative about what counts as "incomplete" — see
+ * curriculum/carryForward.ts's doc comment for why only "in_progress"
+ * (not "not_started") blocks are ever treated as outstanding.
+ */
+export interface CarryForwardProvenance {
+  fromProposedDayId: string;
+  fromDate: string; // ISO "YYYY-MM-DD"
+  fromBlockId: string;
+  reason: string;
+}
+
+/**
+ * "Do Not Use for Assessment" (requirement 10). Default (field absent) is
+ * eligible — exclusion is always an explicit teacher action
+ * (setAssessmentEligibility, proposedDays.ts), never inferred. Excluding a
+ * block/day from assessment must never erase completion, instructional
+ * time, historical record, or student work — it only marks that evidence
+ * as not to be used by a future adaptive mastery model. Nothing in step 5
+ * actually feeds block-level evidence into masteryRecords yet (no path
+ * does that today — see mastery.ts, unchanged), so this is the foundation
+ * a future evidence consumer will check, not a live enforcement point yet.
+ */
+export interface AssessmentEligibility {
+  eligible: boolean;
+  excludedByUid?: string;
+  excludedAt?: Timestamp;
+  excludedReason?: string;
+}
+
+/**
+ * One instructional block within a proposed day. Content fields (title,
+ * subject, objectiveIds, stage, estimatedMinutes, required, dependsOn,
+ * order, carryForward, retrievalReason, remediationIntent,
+ * activityFormat, notes) live in both ProposedDay.learningBlocks
+ * (permanent AI-generated original) and ProposedDay.draft.learningBlocks
+ * (current, editable pre-approval, frozen at approval) — same immutable-
+ * original/current-draft split as the rest of ProposedDay, see
+ * ProposedDayDraft's doc comment.
+ *
+ * completionState and teacherLocked are placeholders a future step
+ * actually writes (step 5 always generates "not_started"/false) — kept on
+ * the block itself since they're content-adjacent (what stage of the
+ * cycle this block is in), unlike assessment-eligibility exclusions,
+ * which are governance flags that must stay mutable even on an approved/
+ * historical day and so live in their own top-level fields on ProposedDay
+ * (blockAssessmentExclusions/dayAssessmentEligibility) instead of inside
+ * this object — see proposedDays.ts's setAssessmentEligibility.
+ */
+export interface LearningBlock {
+  blockId: string; // stable within this ProposedDay only — "b1", "b2", ...
+  studentId: string;
   subject: Subject;
-  description: string;
+  title: string;
+  /** Server-assigned only — never trusts an AI-supplied id. See curriculum/objectiveId.ts. */
+  objectiveIds: string[];
+  stage: InstructionalStage;
+  estimatedMinutes: number;
+  /** false = enrichment — see requirement 7: finishing required work early unlocks enrichment, never tomorrow's required curriculum. */
+  required: boolean;
+  completionState: BlockCompletionState;
+  dependsOn: BlockDependency[];
+  teacherLocked: boolean;
+  /** Position within this day's block list — the ordering Strict mode enforces. Always the block's index in the validated array; never trusts an AI-claimed order. */
+  order: number;
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
+  carryForward?: CarryForwardProvenance;
+  retrievalReason?: RetrievalReason;
+  remediationIntent?: RemediationIntent;
+  activityFormat?: ActivityFormat;
+  notes?: string;
 }
 
 export interface ProposedDay {
@@ -537,15 +659,30 @@ export interface ProposedDay {
   jasperMessage: JasperMessage | null;
   /** Claude's suggestion at generation time. */
   suggestedItineraryMode: ItineraryMode | null;
-  learningBlocks: LearningBlockSummary[];
+  learningBlocks: LearningBlock[];
   /**
    * Carry-forward/incomplete-work notes from the prior school day, when
-   * available. Nothing in the app produces real carry-forward data yet —
-   * there's no per-block completion tracking (that's step 5's block
-   * engine) — so this is always empty today. Reserved now so step 5 has
-   * somewhere to write it without another schema change.
+   * available — human-readable summary; see curriculum/carryForward.ts
+   * for the actual per-block provenance (LearningBlock.carryForward).
+   * Empty whenever there was nothing outstanding to carry (which, until a
+   * future step actually records block completion, is effectively
+   * always — see carryForward.ts's doc comment on why "not_started" is
+   * deliberately never treated as outstanding).
    */
   carryForwardNotes: string[];
+
+  // --- Assessment-eligibility governance (build-order step 5, requirement
+  // 10: "Do Not Use for Assessment"). Deliberately NOT inside
+  // learningBlocks/draft.learningBlocks — these must stay mutable even on
+  // an approved/historical day (a teacher can flag or un-flag evidence at
+  // any time), which would conflict with the "content is frozen once
+  // approved" rule those arrays otherwise follow. Written only by
+  // setAssessmentEligibility (proposedDays.ts). Absent/undefined always
+  // means eligible — exclusion is only ever an explicit teacher action. ---
+  /** Keyed by LearningBlock.blockId. Only entries with eligible: false are ever really necessary here, but a re-included block is written back as {eligible:true} rather than deleted, so who re-included it and when stays visible if ever needed. */
+  blockAssessmentExclusions?: Record<string, AssessmentEligibility>;
+  /** Whole-day exclusion — independent of any individual block's flag. */
+  dayAssessmentEligibility?: AssessmentEligibility;
 
   /**
    * The teacher's current review copy (build-order step 4.1) — the single
@@ -573,6 +710,17 @@ export interface ProposedDayDraft {
   /** The teacher's edited Jasper text, distinct from jasperMessage.generated — undefined until a teacher actually changes it from the generated text. */
   jasperMessageEdited?: string;
   itineraryMode: ItineraryMode;
+  /**
+   * Seeded as a copy of the generated learningBlocks at generation time.
+   * Not yet editable via saveProposedDayDraft (build-order step 5 only
+   * asks the review UI to INSPECT structured blocks, not edit them) —
+   * kept here anyway for the same reason draft mirrors every other
+   * generated field: so a future step that DOES add block editing
+   * doesn't need another schema change, and so this array is (like the
+   * rest of draft) still "the current copy" that becomes the final
+   * approved/published one, not the frozen original.
+   */
+  learningBlocks: LearningBlock[];
   /** 0 for the seeded, never-actually-edited copy created at generation time; increments by 1 on each saveProposedDayDraft call. */
   revision: number;
   lastEditedByUid: string;

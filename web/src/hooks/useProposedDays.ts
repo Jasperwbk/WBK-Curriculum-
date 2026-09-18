@@ -12,9 +12,65 @@ export interface JasperMessage {
   edited?: string;
 }
 
-export interface LearningBlockSummary {
+// --- Block/objective-level day structure (build-order step 5) — mirrors
+// functions/src/types.ts's LearningBlock; see that file for the full
+// design doc comments (immutable-original vs. draft split, why
+// completionState/teacherLocked are placeholders step 5 never writes
+// anything but "not_started"/false to, why assessment-eligibility flags
+// live outside this shape entirely). ---
+export type InstructionalStage =
+  | "warmup_retrieval"
+  | "teach_model"
+  | "guided_practice"
+  | "independent_practice"
+  | "assessment_check"
+  | "application_transfer"
+  | "reflection_metacognition"
+  | "enrichment";
+
+export type BlockCompletionState = "not_started" | "in_progress" | "completed" | "carried_forward";
+export type RetrievalReason = "recent_retrieval" | "spaced_revisit" | "interleaved_practice" | "delayed_retention_check";
+export type RemediationIntent = "initial_instruction" | "retrieval" | "remediation" | "assessment";
+export type ActivityFormat = "printable" | "hands_on" | "digital" | "discussion";
+
+export interface BlockDependency {
+  blockId: string;
+}
+
+export interface CarryForwardProvenance {
+  fromProposedDayId: string;
+  fromDate: string;
+  fromBlockId: string;
+  reason: string;
+}
+
+export interface AssessmentEligibility {
+  eligible: boolean;
+  excludedByUid?: string;
+  excludedAt?: Timestamp;
+  excludedReason?: string;
+}
+
+export interface LearningBlock {
+  blockId: string;
+  studentId: string;
   subject: string;
-  description: string;
+  title: string;
+  objectiveIds: string[];
+  stage: InstructionalStage;
+  estimatedMinutes: number;
+  required: boolean;
+  completionState: BlockCompletionState;
+  dependsOn: BlockDependency[];
+  teacherLocked: boolean;
+  order: number;
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
+  carryForward?: CarryForwardProvenance;
+  retrievalReason?: RetrievalReason;
+  remediationIntent?: RemediationIntent;
+  activityFormat?: ActivityFormat;
+  notes?: string;
 }
 
 export interface ProposedDayDraft {
@@ -23,6 +79,7 @@ export interface ProposedDayDraft {
   planText: string;
   jasperMessageEdited?: string;
   itineraryMode: ItineraryMode;
+  learningBlocks: LearningBlock[];
   revision: number;
   lastEditedByUid: string;
   lastEditedAt: Timestamp;
@@ -47,12 +104,16 @@ export interface ProposedDay {
   planText: string;
   jasperMessage: JasperMessage | null;
   suggestedItineraryMode: ItineraryMode | null;
-  learningBlocks: LearningBlockSummary[];
-  /** The teacher's review copy — current from generation through approval. See saveProposedDayDraft/approveProposedDay. */
+  learningBlocks: LearningBlock[];
+  carryForwardNotes: string[];
+  /** The teacher's review copy — current from generation through approval AND beyond (this is the array to display, even for an approved/historical day — see ProposedDaysPage.tsx). See saveProposedDayDraft/approveProposedDay. */
   draft: ProposedDayDraft;
   itineraryMode?: ItineraryMode;
   approvedByUid?: string;
   approvedAt?: Timestamp;
+  /** "Do Not Use for Assessment" governance flags (step 5) — independent of draft/approval; absent always means eligible. */
+  blockAssessmentExclusions?: Record<string, AssessmentEligibility>;
+  dayAssessmentEligibility?: AssessmentEligibility;
 }
 
 /** Every proposedDays doc for the family — every version, not just the latest, so history stays visible. */

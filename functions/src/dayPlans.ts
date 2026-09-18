@@ -71,6 +71,16 @@ export interface StudentContext {
   dayDesignationDescription: string | null;
   /** The raw week content text used for grounding, when the gate allowed it (certified or legacy). */
   weekContent: string | null;
+  /**
+   * Real, already-assigned objectiveIds (mastered + aced), grouped by
+   * subject — build-order step 5: a retrieval/warm-up block reuses one of
+   * THESE real ids rather than inventing a new one, so retrieval evidence
+   * actually lands against the same objective it's retrieving. See
+   * curriculum/blockValidation.ts.
+   */
+  masteredObjectiveIdsBySubject: Partial<Record<Subject, string[]>>;
+  /** Real objectiveIds currently "still building" (not yet mastered), grouped by subject — used to default a block's remediationIntent to "remediation" rather than "initial_instruction". */
+  inProgressObjectiveIdsBySubject: Partial<Record<Subject, string[]>>;
 }
 
 /**
@@ -132,6 +142,9 @@ export async function buildStudentContext(
         `objectives stack on top in that subject: ${formatObjectives(inProgress)}`
     );
   }
+
+  const masteredObjectiveIdsBySubject = groupObjectiveIdsBySubject([...masteredNotAced, ...aced]);
+  const inProgressObjectiveIdsBySubject = groupObjectiveIdsBySubject(inProgress);
 
   const subjectsReadyToExceedGradeLevel = subjectsWhereEveryTrackedObjectiveIsAced(records);
   if (subjectsReadyToExceedGradeLevel.length > 0) {
@@ -216,11 +229,23 @@ export async function buildStudentContext(
     dayDesignationType,
     dayDesignationDescription,
     weekContent: usedWeekContent,
+    masteredObjectiveIdsBySubject,
+    inProgressObjectiveIdsBySubject,
   };
 }
 
 function formatObjectives(records: MasteryRecord[]): string {
   return records.map((r) => `${subjectLabel(r.subject)}/${r.skill}`).join(", ");
+}
+
+function groupObjectiveIdsBySubject(records: MasteryRecord[]): Partial<Record<Subject, string[]>> {
+  const bySubject: Partial<Record<Subject, string[]>> = {};
+  for (const r of records) {
+    const list = bySubject[r.subject] ?? [];
+    list.push(r.objectiveId);
+    bySubject[r.subject] = list;
+  }
+  return bySubject;
 }
 
 /**

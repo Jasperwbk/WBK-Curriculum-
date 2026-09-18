@@ -4,7 +4,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireCaller, requireTeacher, requireSameFamily } from "./util/auth";
 import { createProposal, approveProposal } from "./approvals";
-import { ALL_SUBJECTS, isValidSubject } from "./subjects";
+import { ALL_SUBJECTS } from "./subjects";
 import { getQuarterAndWeek } from "./curriculum/loadCurriculumContent";
 import {
   getFamilyQuarterCertificationStatus,
@@ -16,12 +16,15 @@ import { hashText } from "./curriculum/contentHash";
 import { checkDraftRevision, decideGenerationAction, isProposedDayStale } from "./curriculum/proposedDayLifecycle";
 import { getGenerationLeadDays } from "./curriculum/generationSchedule";
 import { computeInstructionalGenerationTargetDate } from "./curriculum/instructionalCalendar";
+import { validateAndNormalizeBlocks, type ObjectiveIdScope } from "./curriculum/blockValidation";
+import { computeOutstandingCarryForward, attachCarryForwardProvenance } from "./curriculum/carryForward";
 import { buildStudentContext, type StudentContext } from "./dayPlans";
 import type {
+  AssessmentEligibility,
   Family,
   ItineraryMode,
   JasperMessage,
-  LearningBlockSummary,
+  LearningBlock,
   ProposedDay,
   ProposedDayDraft,
   ProposedDayType,
@@ -137,6 +140,42 @@ async function getLatestProposedDay(
   return { id: doc.id, record: doc.data() as ProposedDay };
 }
 
+interface OutstandingCarryForward {
+  fromProposedDayId: string;
+  fromDate: string;
+  blocks: LearningBlock[];
+}
+
+/**
+ * The most recent APPROVED day before `beforeDate` for this student, and
+ * whichever of its required blocks are still "in_progress" (see
+ * carryForward.ts's doc comment on why "not_started" never counts —
+ * nothing writes anything else today, so this is a safe no-op in
+ * practice until a future step actually records block completion).
+ */
+async function loadOutstandingCarryForward(
+  familyId: string,
+  studentId: string,
+  beforeDate: string
+): Promise<OutstandingCarryForward | null> {
+  const db = getFirestore();
+  const snap = await db
+    .collection("proposedDays")
+    .where("familyId", "==", familyId)
+    .where("studentId", "==", studentId)
+    .where("status", "==", "approved")
+    .where("date", "<", beforeDate)
+    .orderBy("date", "desc")
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  const record = doc.data() as ProposedDay;
+  const outstanding = computeOutstandingCarryForward(record.draft.learningBlocks);
+  if (outstanding.length === 0) return null;
+  return { fromProposedDayId: doc.id, fromDate: record.date, blocks: outstanding };
+}
+
 function classifyDayType(context: StudentContext): ProposedDayType {
   if (context.gateOutcome === "alternative_package") return "alternativePackage";
   if (context.gateOutcome === "non_instructional") return "nonInstructional";
@@ -178,23 +217,32 @@ interface GeneratedContent {
   planText: string;
   jasperMessage: string;
   suggestedItineraryMode: ItineraryMode;
-  learningBlocks: LearningBlockSummary[];
+  learningBlocks: LearningBlock[];
 }
 
 /**
  * The one Claude call per student for an "ordinary" or "alternativePackage"
  * day — reuses the same context.contextLine grounding buildStudentContext
  * already produces for generatePlan, extended to also ask for the Jasper
- * Morning Message, a suggested itinerary mode, and a lightweight block
- * list (NOT the full step-5 block/objective engine — just enough for the
- * teacher to see the day's shape and for a later Strict/Flexible check).
+ * Morning Message, a suggested itinerary mode, and a full structured block
+ * list (build-order step 5). Claude proposes each block's plain-text
+ * objective DESCRIPTIONS only — never an id, never this block's final
+ * order, never a cross-block dependency by id — everything identity-
+ * bearing is assigned server-side afterward by validateAndNormalizeBlocks
+ * ("generation creates a PROPOSAL; teacher authority remains final," and
+ * that includes never trusting arbitrary model JSON for anything an
+ * evidence/mastery record will ever key off of).
  */
 async function generateOrdinaryDayContent(params: {
   apiKey: string;
   date: string;
+  studentId: string;
   studentName: string;
   context: StudentContext;
   dayType: ProposedDayType;
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
+  outstandingCarryForward: OutstandingCarryForward | null;
 }): Promise<GeneratedContent> {
   const client = new Anthropic({ apiKey: params.apiKey });
 
@@ -205,9 +253,16 @@ async function generateOrdinaryDayContent(params: {
         "trip would override the week's regular content."
       : "";
 
+  const carryForwardNote =
+    params.outstandingCarryForward && params.outstandingCarryForward.blocks.length > 0
+      ? "\n\nThe following required work was started but not finished on the prior school day. Rebalance today's " +
+        "plan around it rather than ignoring it — it does not need to be redone from scratch, but it needs a " +
+        `real place in today's blocks: ${params.outstandingCarryForward.blocks.map((b) => `${b.subject} — ${b.title}`).join("; ")}.`
+      : "";
+
   const message = await client.messages.create({
     model: "claude-sonnet-5",
-    max_tokens: 1800,
+    max_tokens: 2400,
     system:
       "You write ONE student's proposed school day, roughly two days ahead of when it's needed, for a teacher " +
       "to review and approve before it's ever shown to the student. This is a governed, curriculum-grounded day " +
@@ -220,9 +275,11 @@ async function generateOrdinaryDayContent(params: {
       "(not today's new material) -> new teaching -> mixed/interleaved practice (today's objective plus 1-2 " +
       "older mastered ones once there are 2+ live) -> a short, ungraded retrieval close-out. If the context " +
       "lists objectives 'still building,' re-teach that specific objective with a genuinely different framing " +
-      "before introducing anything new in that subject.\n" +
+      "(not the identical activity that didn't work) before introducing anything new in that subject.\n" +
       "3. The actual practice/work should be mostly physical — real printable worksheets, favoring interactive/" +
-      "puzzle formats over a bare problem list, plus a cursive handwriting component where it fits naturally.\n" +
+      "puzzle formats over a bare problem list, plus a cursive handwriting component where it fits naturally. " +
+      "For a student on the demonstration-based track (context will say so), favor tap/show-me, matching, " +
+      "pointing, sorting, naming, physical demonstration, or guided play over any written-test format.\n" +
       "4. If context flags an objective as aced easily, give a genuinely harder stretch version rather than " +
       "just reviewing at the same level; if a whole subject is 'ready to exceed grade-level,' introduce real " +
       "above-grade-level material rather than plateauing.\n" +
@@ -236,13 +293,32 @@ async function generateOrdinaryDayContent(params: {
       "6. Suggest an itinerary mode: 'strict' if the day's blocks genuinely depend on a fixed order (e.g. a " +
       "new concept must be taught before the practice that uses it), 'flexible' if the student could " +
       "reasonably choose which block to start with today.\n" +
-      "7. List the day's learning blocks as short (subject, one-line description) pairs — a lightweight " +
-      "summary only, not full lesson content (that's already in planText).\n" +
+      "7. Break the day into learning blocks — each one stage of the learning cycle (a warm-up/retrieval block, " +
+      "a teach/model block, guided practice, independent practice, an assessment/check, application/transfer, " +
+      "reflection, or enrichment). A chain like teach -> guided practice -> independent attempt -> check for " +
+      "the SAME objective should be separate blocks in dependsOnIndex order, each one depending on the index of " +
+      "the block right before it in that chain. Mark a block required:false only for genuine enrichment/" +
+      "extension work, never for core instruction. State 1-3 short objective phrases per block in " +
+      "objectiveDescriptions (plain skill descriptions, e.g. \"Convert oz to lb\" — not an id).\n" +
       alternativeNote +
+      carryForwardNote +
       "\n\nRespond with ONLY a single JSON object, no prose, no markdown fences, matching exactly this shape: " +
       '{"title": string, "summary": string (one sentence), "planText": string (plain text, blank lines between ' +
       'sections, no markdown headers), "jasperMessage": string, "suggestedItineraryMode": "strict" | "flexible", ' +
-      `"learningBlocks": [{"subject": one of [${ALL_SUBJECTS.join(", ")}], "description": string}] (1-4 items)}.`,
+      '"learningBlocks": [{' +
+      `"subject": one of [${ALL_SUBJECTS.join(", ")}], ` +
+      '"title": string, ' +
+      '"objectiveDescriptions": string[] (1-3 short skill phrases), ' +
+      '"stage": one of ["warmup_retrieval","teach_model","guided_practice","independent_practice",' +
+      '"assessment_check","application_transfer","reflection_metacognition","enrichment"], ' +
+      '"estimatedMinutes": number, ' +
+      '"required": boolean, ' +
+      '"dependsOnIndex": number[] (indices of EARLIER items in this same array this block depends on), ' +
+      '"retrievalReason": one of ["recent_retrieval","spaced_revisit","interleaved_practice",' +
+      '"delayed_retention_check"] or null (only meaningful when stage is "warmup_retrieval"), ' +
+      '"activityFormat": one of ["printable","hands_on","digital","discussion"] or null, ' +
+      '"notes": string or null' +
+      "}] (2-6 items)}.",
     messages: [
       {
         role: "user",
@@ -256,7 +332,7 @@ async function generateOrdinaryDayContent(params: {
     throw new HttpsError("internal", "Claude returned no parseable text.");
   }
 
-  let parsed: Partial<GeneratedContent>;
+  let parsed: Partial<GeneratedContent> & { learningBlocks?: unknown };
   try {
     const start = textBlock.text.indexOf("{");
     const end = textBlock.text.lastIndexOf("}");
@@ -266,15 +342,36 @@ async function generateOrdinaryDayContent(params: {
     throw new HttpsError("internal", "Could not parse Claude's response as JSON.");
   }
 
-  const learningBlocks: LearningBlockSummary[] = Array.isArray(parsed.learningBlocks)
-    ? (parsed.learningBlocks as unknown[]).flatMap((raw): LearningBlockSummary[] => {
-        if (!raw || typeof raw !== "object") return [];
-        const subject = (raw as { subject?: unknown }).subject;
-        const description = (raw as { description?: unknown }).description;
-        if (typeof subject !== "string" || !isValidSubject(subject) || typeof description !== "string") return [];
-        return [{ subject, description }];
-      })
-    : [];
+  const scope: ObjectiveIdScope | null =
+    params.context.kidKey && params.context.quarterAndWeek
+      ? {
+          kidKey: params.context.kidKey,
+          quarter: params.context.quarterAndWeek.quarter,
+          week: params.context.quarterAndWeek.week,
+          date: params.date,
+        }
+      : null;
+
+  let learningBlocks = validateAndNormalizeBlocks({
+    raw: parsed.learningBlocks,
+    studentId: params.studentId,
+    scope,
+    mastery: {
+      masteredObjectiveIdsBySubject: params.context.masteredObjectiveIdsBySubject,
+      inProgressObjectiveIdsBySubject: params.context.inProgressObjectiveIdsBySubject,
+    },
+    sourceQuarterCertificationId: params.sourceQuarterCertificationId,
+    sourceWeeklyCertificationId: params.sourceWeeklyCertificationId,
+  });
+
+  if (params.outstandingCarryForward && params.outstandingCarryForward.blocks.length > 0) {
+    learningBlocks = attachCarryForwardProvenance(
+      learningBlocks,
+      params.outstandingCarryForward.blocks,
+      params.outstandingCarryForward.fromProposedDayId,
+      params.outstandingCarryForward.fromDate
+    );
+  }
 
   return {
     title: typeof parsed.title === "string" ? parsed.title : "Proposed day",
@@ -406,6 +503,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
 
           // "generate" or "regenerate" from here.
           let generated: GeneratedContent;
+          let outstandingCarryForward: OutstandingCarryForward | null = null;
           if (dayType === "nonInstructional") {
             generated = {
               title: "No School",
@@ -416,14 +514,19 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
               learningBlocks: [],
             };
           } else {
+            outstandingCarryForward = await loadOutstandingCarryForward(familyId, studentId, date);
             const studentSnap = await db.collection("users").doc(studentId).get();
             const studentName = (studentSnap.data() as UserProfile | undefined)?.displayName ?? "the student";
             generated = await generateOrdinaryDayContent({
               apiKey: anthropicApiKey.value(),
               date,
+              studentId,
               studentName,
               context,
               dayType,
+              sourceQuarterCertificationId: context.quarterCertificationId,
+              sourceWeeklyCertificationId: context.weeklyCertificationId,
+              outstandingCarryForward,
             });
           }
 
@@ -452,7 +555,12 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
             jasperMessage: dayType === "nonInstructional" ? null : ({ generated: generated.jasperMessage } as JasperMessage),
             suggestedItineraryMode: dayType === "nonInstructional" ? null : generated.suggestedItineraryMode,
             learningBlocks: generated.learningBlocks,
-            carryForwardNotes: [],
+            carryForwardNotes: outstandingCarryForward
+              ? [
+                  `Carrying forward ${outstandingCarryForward.blocks.length} incomplete required item(s) from ` +
+                    `${outstandingCarryForward.fromDate}: ${outstandingCarryForward.blocks.map((b) => b.title).join("; ")}.`,
+                ]
+              : [],
             // Seeded as an exact copy of the generated values — revision 0
             // means "never actually edited by a teacher yet." See
             // types.ts's ProposedDayDraft doc comment.
@@ -461,6 +569,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
               summary: generated.summary,
               planText: generated.planText,
               itineraryMode: generated.suggestedItineraryMode ?? "flexible",
+              learningBlocks: generated.learningBlocks,
               revision: 0,
               lastEditedByUid: caller.uid,
               lastEditedAt: generatedAt,
@@ -608,6 +717,11 @@ export const saveProposedDayDraft = onCall<SaveProposedDayDraftRequest>(async (r
       planText,
       ...(jasperMessageEdited !== undefined ? { jasperMessageEdited } : {}),
       itineraryMode,
+      // Not yet editable via this callable (build-order step 5 only asks
+      // the review UI to inspect structured blocks, not edit them) —
+      // carried through unchanged from whatever's currently saved, same
+      // as every other field this call doesn't take as a parameter.
+      learningBlocks: doc.draft.learningBlocks,
       revision: newRevision,
       lastEditedByUid: caller.uid,
       lastEditedAt: Timestamp.now(),
@@ -764,3 +878,106 @@ async function checkStalenessInternal(doc: ProposedDay): Promise<boolean> {
   const currentSourceSignature = computeSourceSignature(context, classifyDayType(context));
   return isProposedDayStale({ status: doc.status, sourceSignature: doc.sourceSignature, currentSourceSignature });
 }
+
+interface SetAssessmentEligibilityRequest {
+  proposedDayId: string;
+  /** Omitted = applies to the WHOLE day; a real blockId = just that one block. */
+  blockId?: string;
+  eligible: boolean;
+  reason?: string;
+}
+
+interface AssessmentEligibilityPayload {
+  proposedDayId: string;
+  blockId: string | null;
+  eligible: boolean;
+  reason: string | null;
+}
+
+/**
+ * "Do Not Use for Assessment" (build-order step 5, requirement 10). A
+ * single, immediate teacher action — not a propose-then-separately-
+ * approve review cycle (there's nothing to review; it's the teacher's own
+ * direct governance call, the same shape as designateDay) — but still
+ * routed through createProposal/approveProposal back-to-back so it gets
+ * the same permanent audit-trail entry every other governance action
+ * gets, rather than inventing a new ad hoc pattern for just this one.
+ *
+ * Works on a proposed OR approved day — evidence-eligibility is
+ * orthogonal to the draft/approval lifecycle, so it deliberately does
+ * NOT touch draft.revision or require an expectedRevision: flagging a
+ * block doesn't invalidate whatever a teacher is mid-editing, and doesn't
+ * require re-approval. Never erases completion, instructional time, the
+ * historical record, or student work — it only ever writes the exclusion
+ * flag itself (blockAssessmentExclusions / dayAssessmentEligibility),
+ * alongside every other field on the document, untouched.
+ */
+export const setAssessmentEligibility = onCall<SetAssessmentEligibilityRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const { proposedDayId, blockId, eligible, reason } = request.data ?? {};
+  if (!proposedDayId || typeof proposedDayId !== "string") {
+    throw new HttpsError("invalid-argument", "proposedDayId is required.");
+  }
+  if (typeof eligible !== "boolean") {
+    throw new HttpsError("invalid-argument", "eligible is required.");
+  }
+  if (blockId !== undefined && (typeof blockId !== "string" || blockId.trim().length === 0)) {
+    throw new HttpsError("invalid-argument", "blockId, when provided, must be a non-empty string.");
+  }
+  if (reason !== undefined && typeof reason !== "string") {
+    throw new HttpsError("invalid-argument", "reason, when provided, must be a string.");
+  }
+
+  const db = getFirestore();
+  const ref = db.collection("proposedDays").doc(proposedDayId);
+  const preSnap = await ref.get();
+  if (!preSnap.exists) {
+    throw new HttpsError("not-found", "No such proposed day.");
+  }
+  const preDoc = preSnap.data() as ProposedDay;
+  requireSameFamily(caller, preDoc.familyId);
+  if (blockId && !preDoc.learningBlocks.some((b) => b.blockId === blockId)) {
+    throw new HttpsError("invalid-argument", `No such block "${blockId}" on this proposed day.`);
+  }
+
+  const { proposalId } = await createProposal<AssessmentEligibilityPayload>({
+    kind: "assessmentEligibilityChange",
+    familyId: preDoc.familyId,
+    targetUserId: preDoc.studentId,
+    proposedByUid: caller.uid,
+    proposedByRole: "teacher",
+    payload: { proposedDayId, blockId: blockId ?? null, eligible, reason: reason ?? null },
+  });
+
+  await approveProposal<AssessmentEligibilityPayload>({
+    proposalId,
+    reviewerUid: caller.uid,
+    commit: async (tx, payload) => {
+      // Fresh read INSIDE the transaction — two teachers flagging
+      // DIFFERENT blocks at nearly the same moment must not have one
+      // overwrite the other's entry in the shared exclusions map, which a
+      // pre-transaction read (preDoc, captured before createProposal even
+      // ran) could not protect against.
+      const freshSnap = await tx.get(ref);
+      const freshDoc = freshSnap.data() as ProposedDay;
+      const flag: AssessmentEligibility = payload.eligible
+        ? { eligible: true }
+        : {
+            eligible: false,
+            excludedByUid: caller.uid,
+            excludedAt: Timestamp.now(),
+            ...(payload.reason ? { excludedReason: payload.reason } : {}),
+          };
+      if (payload.blockId) {
+        const exclusions = { ...(freshDoc.blockAssessmentExclusions ?? {}), [payload.blockId]: flag };
+        tx.update(ref, { blockAssessmentExclusions: exclusions });
+      } else {
+        tx.update(ref, { dayAssessmentEligibility: flag });
+      }
+    },
+  });
+
+  return { proposedDayId, blockId: blockId ?? null, eligible };
+});

@@ -3,8 +3,25 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
-import { useProposedDays, type ItineraryMode, type ProposedDay } from "../hooks/useProposedDays";
+import {
+  useProposedDays,
+  type InstructionalStage,
+  type ItineraryMode,
+  type LearningBlock,
+  type ProposedDay,
+} from "../hooks/useProposedDays";
 import { AppShell } from "../components/AppShell";
+
+const STAGE_LABEL: Record<InstructionalStage, string> = {
+  warmup_retrieval: "Warm-up / retrieval",
+  teach_model: "Teach / model",
+  guided_practice: "Guided practice",
+  independent_practice: "Independent practice",
+  assessment_check: "Assessment / check",
+  application_transfer: "Application / transfer",
+  reflection_metacognition: "Reflection",
+  enrichment: "Enrichment",
+};
 
 interface GenerateResult {
   studentId: string;
@@ -88,6 +105,7 @@ export function ProposedDaysPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [viewingBlocksId, setViewingBlocksId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ReviewDraft | null>(null);
   const [staleness, setStaleness] = useState<Record<string, boolean | "checking">>({});
   const [saving, setSaving] = useState(false);
@@ -347,6 +365,17 @@ export function ProposedDaysPage() {
                           </button>
                         </>
                       )}
+                      {plan.draft.learningBlocks.length > 0 && (
+                        <button
+                          onClick={() => setViewingBlocksId((id) => (id === plan.id ? null : plan.id))}
+                          className="rounded-md border px-2 py-1 text-xs font-medium"
+                          style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                        >
+                          {viewingBlocksId === plan.id
+                            ? "Hide blocks"
+                            : `${plan.draft.learningBlocks.length} block${plan.draft.learningBlocks.length === 1 ? "" : "s"}`}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -356,9 +385,14 @@ export function ProposedDaysPage() {
                     </p>
                   )}
 
-                  <p style={{ color: "var(--text-secondary)" }}>
-                    {plan.status === "proposed" ? plan.draft.summary : plan.summary}
-                  </p>
+                  {/* draft.summary is the "current" summary from generation through approval and beyond —
+                      unlike the frozen top-level plan.summary/plan.title, it reflects whatever a teacher
+                      actually approved (see types.ts's ProposedDayDraft doc comment). */}
+                  <p style={{ color: "var(--text-secondary)" }}>{plan.draft.summary}</p>
+
+                  {viewingBlocksId === plan.id && (
+                    <BlockList blocks={[...plan.draft.learningBlocks].sort((a, b) => a.order - b.order)} />
+                  )}
 
                   {isReviewing && draft && (
                     <div className="space-y-3 border-t pt-3" style={{ borderColor: "var(--border)" }}>
@@ -489,5 +523,53 @@ export function ProposedDaysPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * Read-only structured-block inspection (build-order step 5, requirement
+ * 12 — "at minimum make visible: block title, subject, objective(s),
+ * instructional stage, estimated time, required/enrichment, dependencies/
+ * locked status"). Deliberately inspect-only, not an editing surface —
+ * block content isn't yet editable via saveProposedDayDraft in this step.
+ */
+function BlockList({ blocks }: { blocks: LearningBlock[] }) {
+  const titleById = new Map(blocks.map((b) => [b.blockId, b.title]));
+  return (
+    <ul className="space-y-2 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+      {blocks.map((block) => (
+        <li
+          key={block.blockId}
+          className="rounded-md border px-3 py-2 text-xs space-y-1"
+          style={{ borderColor: "var(--border)", background: "var(--page)" }}
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-medium" style={{ color: "var(--text-primary)" }}>
+              {block.title}
+            </span>
+            <span style={{ color: "var(--text-muted)" }}>
+              {block.subject} · {STAGE_LABEL[block.stage]} · {block.estimatedMinutes} min ·{" "}
+              {block.required ? "required" : "enrichment"}
+            </span>
+          </div>
+          {block.objectiveIds.length > 0 && (
+            <div style={{ color: "var(--text-secondary)" }}>Objectives: {block.objectiveIds.join(", ")}</div>
+          )}
+          {block.dependsOn.length > 0 && (
+            <div style={{ color: "var(--text-secondary)" }}>
+              Depends on: {block.dependsOn.map((d) => titleById.get(d.blockId) ?? d.blockId).join(", ")}
+            </div>
+          )}
+          {block.teacherLocked && (
+            <div style={{ color: "var(--status-critical)" }}>Locked by teacher</div>
+          )}
+          {block.carryForward && (
+            <div style={{ color: "var(--text-muted)" }}>
+              Carried forward from {block.carryForward.fromDate}: {block.carryForward.reason}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
