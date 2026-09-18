@@ -176,7 +176,67 @@ deployed**:
   separately for the complete schema, validation, eligibility, and test
   coverage.
 
-Next up: step 6, only once you've reviewed step 5.
+- **Step 6 — done, awaiting your review.** The authoritative COMPLETION
+  path, parallel to `proposedDays.ts`'s authoritative PLANNING path — a
+  new `evidencePackets/{familyId}_{studentId}_{date}` collection
+  (deterministic id, teacher-authored once per day, never AI-regenerated)
+  distinguishing what was planned from what actually happened. Core
+  authority rule preserved throughout: a generated/approved `ProposedDay`
+  is never mutated by closeout — it stays a pure plan forever; the packet
+  is the real record of completion, actual minutes, and evidence.
+
+  Lifecycle: `openEvidencePacket` (seeds block-level completion/minutes/
+  evidence-eligibility from the approved plan, idempotent) ->
+  `saveEvidencePacketDraft` (any number of times, same optimistic-
+  concurrency `checkDraftRevision` reused directly from step 4.1) ->
+  `approveEvidencePacket`/`approveEvidencePackets` (batch, per-student
+  audit trail preserved), which freezes `reportedMinutes` into
+  `approvedMinutes` in one transaction, then — as two independently
+  idempotent post-approval passes guarded by `hoursPostedAt`/
+  `masteryAppliedAt` — posts official instructional minutes to `logs`
+  and applies eligible evidence to the existing, unchanged 2-of-3 mastery
+  threshold (`mastery.ts` untouched).
+
+  Planned/reported/approved minutes kept as three genuinely separate
+  fields, never overwritten into each other. Four completion states
+  (not_started/in_progress/completed/excused — "excused" carefully
+  scoped: never carries forward, never implies minutes, never implies
+  mastery evidence). Hours are independent of assessment-eligibility and
+  completion state entirely (`evidenceHours.ts`) — a poor result never
+  erases legitimate instructional time. "Do Not Use for Assessment" now
+  actually gates the mastery pipeline at all three granularities (day/
+  block/result — `evidenceMastery.ts`'s `isEvidenceEligibleForMastery`),
+  richer `EvidenceOutcome`s (including Maizley-compatible non-written
+  demonstration types) collapsing to the existing binary threshold only
+  where unambiguous. Carry-forward made real: `not_started` now counts as
+  outstanding once a day is actually closed out (`evidencePacketStore.ts
+  #computeCarryForwardFromPacket`), with `proposedDays.ts`'s
+  `loadOutstandingCarryForward` preferring this real signal over step 5's
+  original (still-correct, now largely-superseded) ProposedDay-based one.
+
+  Legacy hour compatibility: `dashboard.ts#getActualHoursToDate` is
+  completely untouched — every pre-step-6 log and every ordinary manual
+  log keeps counting exactly as before; `evidencePackets.ts` is the only
+  thing that ever writes a `logs` doc from packet data, and only after
+  teacher approval. Using both the manual and governed paths for the same
+  school day is a documented, accepted double-counting risk, not
+  algorithmically reconciled (would be a second governance layer on an
+  already-working, unrelated flow).
+
+  New teacher UI (`/closeout`, `EndOfDayClosingPage.tsx`) for per-block
+  completion/minutes/notes/evidence entry and batch approval. Self-caught
+  and fixed while touching `index.ts`: step 5's `setAssessmentEligibility`
+  had been built and tested but never actually wired into the exports
+  list, so it was never deployable until now.
+
+  181 unit tests (up from 137). Two new Firestore composite indexes for
+  `evidencePackets` (no rules changes to `logs`; one new teacher-only-read
+  rule for `evidencePackets` itself). `dashboard.ts`, `mastery.ts`,
+  `certificationGate.ts`, `certificationStatus.ts`, and `dayPlans.ts`
+  remain byte-for-byte untouched. See the full report delivered
+  separately for the complete schema, lifecycle, and test coverage.
+
+Next up: step 7, only once you've reviewed step 6.
 
 ---
 
@@ -460,8 +520,10 @@ explicit approval regardless of local test results.
    Not Use for Assessment"; see `functions/src/types.ts`'s `LearningBlock`
    and `functions/src/curriculum/{objectiveId,blockEligibility,
    carryForward,blockValidation}.ts`.
-6. **End-of-day evidence + hour approval** — completed work flows back
-   through teacher verification before becoming authoritative.
+6. ~~**End-of-day evidence + hour approval**~~ — **done**, completed work
+   flows back through teacher verification before becoming authoritative;
+   see `functions/src/evidencePackets.ts` and `functions/src/curriculum/
+   {evidencePacketStore,evidenceValidation,evidenceMastery,evidenceHours}.ts`.
 7. **PE as a first-class component** — carefully migrated into the
    existing Q1 hour system without double-counting or breaking current
    compliance math.
