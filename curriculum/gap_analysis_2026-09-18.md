@@ -236,7 +236,59 @@ deployed**:
   remain byte-for-byte untouched. See the full report delivered
   separately for the complete schema, lifecycle, and test coverage.
 
-Next up: step 7, only once you've reviewed step 6.
+- **Step 6.1 — done, awaiting your review.** Focused hardening pass on
+  step 6, before step 7: authoritative-record double-counting risk plus
+  recoverable post-approval processing.
+
+  Governed vs. legacy hours: `LogEntry` gained an explicit `provenance`
+  ("manual" | "extracurricular" | "governedEvidence") — absent means
+  "manual" for full legacy compatibility, and `dashboard.ts`'s ONE
+  official-hour calculation (now extracted into a pure, tested
+  `curriculum/hourAggregation.ts#sumInstructionalMinutes`, behavior-
+  preserving) never gates on it. Real duplicate prevention stays exactly
+  where it already was — `evidenceHours.ts`'s deterministic
+  `hourLogDocId` — since automatically excluding a manual log that
+  happens to share a date+subject with a governed packet would require
+  the "same date + same subject = duplicate" assumption the instruction
+  explicitly forbade. Instead, `LogActivityPage.tsx` now checks (via the
+  same deterministic `evidencePackets` doc id, never fuzzy text) whether
+  an approved packet already covers the date/subject being logged, and
+  shows a dismissible warning requiring an explicit "this is a separate
+  activity" acknowledgment before saving anyway — prevention through
+  friction, not a hard block, and never touching the actual calculation.
+
+  Recoverable processing: `EndOfDayEvidencePacket` replaced its old
+  `hoursPostedAt`/`masteryAppliedAt` timestamps with explicit
+  `hoursProjection`/`masteryProjection` states (pending/applied/failed,
+  with `lastAttemptAt`/`appliedAt`/a concise `error` — never a raw stack
+  trace), and a new `appliedMasteryEvidenceIds` per-item guard. The
+  approval boundary itself never moves — a packet stays approved even if
+  a projection fails. A new teacher-authorized `reconcileEvidencePacket`
+  callable retries whichever projection is stuck, sharing the exact same
+  `runProjections` code path approval itself uses. Mastery idempotency
+  received special attention per the instruction: a packet-level flag
+  alone can't protect against a crash between individual mastery writes,
+  so each objective-evidence item now has a deterministic
+  `evidenceId` ("{blockId}:{index}"), applied one at a time with its id
+  persisted immediately after each success — a retry can re-select only
+  the genuinely not-yet-applied items, never one already recorded.
+  `EndOfDayClosingPage.tsx` now shows "Hours: Applied/Needs retry" and
+  "Mastery: Applied/Needs retry" with a Retry button, so a stuck
+  projection is visible without inspecting Firestore.
+
+  207 unit tests (up from 181). No Firestore rules/index changes — every
+  new field lives inside the already Cloud-Function-only `evidencePackets`
+  doc or the already-permitted `logs` write paths, and the one new client
+  read (a deterministic point lookup for the logging-page warning) is
+  already covered by the existing teacher-read rule on `evidencePackets`.
+  `mastery.ts`, `certificationGate.ts`, `certificationStatus.ts`, and
+  `dayPlans.ts` remain byte-for-byte untouched; `dashboard.ts` changed
+  only by extracting its existing row-filter into a separately-tested
+  pure function — no calculation behavior changed. See the full report
+  delivered separately for the complete provenance/dedup rule and
+  processing-state lifecycle.
+
+Next up: step 7, only once you've reviewed step 6.1.
 
 ---
 
