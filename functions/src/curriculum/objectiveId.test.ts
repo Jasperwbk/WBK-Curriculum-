@@ -39,6 +39,13 @@ test("subjectAbbreviation matches the abbreviations already embedded in WEEK1_OB
   assert.equal(subjectAbbreviation("bushcraft_outdoor_skills"), "bushcraft");
 });
 
+test("physical_education (build-order step 7) has a real abbreviation and produces/validates ids exactly like any other subject", () => {
+  assert.equal(subjectAbbreviation("physical_education"), "pe");
+  const id = buildObjectiveId("makaio", 2, "physical_education", 1);
+  assert.equal(id, "makaio-w2-pe-1");
+  assert.equal(isValidObjectiveId(id), true);
+});
+
 test("isValidObjectiveId accepts every real WEEK1_OBJECTIVES id", () => {
   for (const kidKey of ["millaray", "makaio"] as const) {
     for (const objective of WEEK1_OBJECTIVES[kidKey]) {

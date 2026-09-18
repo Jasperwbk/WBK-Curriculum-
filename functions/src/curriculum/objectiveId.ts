@@ -25,6 +25,7 @@ const SUBJECT_ABBREVIATIONS: Record<Subject, string> = {
   homestead_skills: "homestead",
   nature_identification: "nature",
   spiritual_cultural: "spiritual",
+  physical_education: "pe",
 };
 
 const ABBREVIATION_TO_SUBJECT: Record<string, Subject> = Object.fromEntries(

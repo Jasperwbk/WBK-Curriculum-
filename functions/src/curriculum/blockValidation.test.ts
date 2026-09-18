@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateAndNormalizeBlocks, type ObjectiveIdScope, type ValidateBlocksParams } from "./blockValidation";
+import {
+  ensureMorningPhysicalEducationBlock,
+  validateAndNormalizeBlocks,
+  type ObjectiveIdScope,
+  type ValidateBlocksParams,
+} from "./blockValidation";
+import type { LearningBlock } from "../types";
 import { weekdayOrdinalBase } from "./objectiveId";
 
 const NON_CATALOG_SCOPE: ObjectiveIdScope = { kidKey: "millaray", quarter: "q1", week: 3, date: "2026-09-21" }; // Monday, week 3 -> no WEEK1_OBJECTIVES catalog entry
@@ -300,4 +306,73 @@ test("every generated block starts not_started, not teacher-locked, and studentI
   assert.equal(blocks[0].completionState, "not_started");
   assert.equal(blocks[0].teacherLocked, false);
   assert.equal(blocks[0].studentId, "kid-42");
+});
+
+// --- ensureMorningPhysicalEducationBlock (build-order step 7) ---
+
+function block(overrides: Partial<LearningBlock> & Pick<LearningBlock, "blockId" | "order">): LearningBlock {
+  return {
+    studentId: "student-1",
+    subject: "math",
+    title: "A block",
+    objectiveIds: [],
+    stage: "teach_model",
+    estimatedMinutes: 20,
+    required: true,
+    completionState: "not_started",
+    dependsOn: [],
+    teacherLocked: false,
+    sourceQuarterCertificationId: "qc-1",
+    sourceWeeklyCertificationId: "wc-1",
+    ...overrides,
+  };
+}
+
+test("a day with no physical_education block gets one prepended at index 0", () => {
+  const original = [block({ blockId: "b1", order: 0 })];
+  const result = ensureMorningPhysicalEducationBlock(original, "student-1", "qc-1", "wc-1");
+  assert.equal(result.length, 2);
+  assert.equal(result[0].subject, "physical_education");
+  assert.equal(result[0].blockId, "b1");
+  assert.equal(result[0].order, 0);
+  assert.equal(result[0].required, true);
+});
+
+test("inserting the default PE block renames every existing block and remaps its dependsOn references", () => {
+  const original = [
+    block({ blockId: "b1", order: 0, title: "teach" }),
+    block({ blockId: "b2", order: 1, title: "practice", dependsOn: [{ blockId: "b1" }] }),
+  ];
+  const result = ensureMorningPhysicalEducationBlock(original, "student-1", "qc-1", "wc-1");
+  assert.equal(result.length, 3);
+  assert.deepEqual(
+    result.map((b) => [b.blockId, b.order, b.title]),
+    [
+      ["b1", 0, "Morning Movement"],
+      ["b2", 1, "teach"],
+      ["b3", 2, "practice"],
+    ]
+  );
+  // The renamed "practice" block's dependency, originally pointing at the
+  // old b1 ("teach"), now correctly points at its new id b2 — never at the
+  // newly-inserted PE block, and never left dangling on the stale id.
+  assert.deepEqual(result[2].dependsOn, [{ blockId: "b2" }]);
+});
+
+test("a day that already has a physical_education block anywhere is left completely unchanged", () => {
+  const original = [
+    block({ blockId: "b1", order: 0, title: "teach" }),
+    block({ blockId: "b2", order: 1, subject: "physical_education", title: "Balance practice" }),
+  ];
+  const result = ensureMorningPhysicalEducationBlock(original, "student-1", "qc-1", "wc-1");
+  assert.deepEqual(result, original);
+});
+
+test("the synthesized default PE block is marked required and carries the source certification ids passed in", () => {
+  const result = ensureMorningPhysicalEducationBlock([], "student-9", "qc-42", "wc-42");
+  assert.equal(result.length, 1);
+  assert.equal(result[0].required, true);
+  assert.equal(result[0].studentId, "student-9");
+  assert.equal(result[0].sourceQuarterCertificationId, "qc-42");
+  assert.equal(result[0].sourceWeeklyCertificationId, "wc-42");
 });

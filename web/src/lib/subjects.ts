@@ -10,6 +10,7 @@ export const SPECIALTY_SUBJECTS = [
   "homestead_skills",
   "nature_identification",
   "spiritual_cultural",
+  "physical_education",
 ] as const;
 
 export type Subject = (typeof CORE_SUBJECTS)[number] | (typeof SPECIALTY_SUBJECTS)[number];
@@ -33,6 +34,7 @@ const SUBJECT_LABELS: Record<Subject, string> = {
   homestead_skills: "Homestead Skills",
   nature_identification: "Nature Identification",
   spiritual_cultural: "Spiritual / Cultural",
+  physical_education: "Physical Education",
 };
 
 export function subjectLabel(subject: string): string {

@@ -350,7 +350,85 @@ deployed**:
   separately for the crash-window analysis, atomicity guarantee, and
   complete test list.
 
-Next up: step 7, only once you've reviewed step 6.2.
+- **Step 7 — done except one flagged decision, awaiting your review.**
+  Physical Education as a first-class WBK curriculum component.
+
+  Subject model: `physical_education` is now a real, canonical specialty
+  subject (`types.ts`'s `SPECIALTY_SUBJECTS`, mirrored in
+  `web/src/lib/subjects.ts`), with one human label ("Physical Education")
+  and one objective-id abbreviation ("pe" — `curriculum/objectiveId.ts`).
+  Audited every subject union/map in both apps; the only two EXHAUSTIVE
+  `Record<Subject, ...>` maps in the whole codebase (`subjects.ts`'s
+  labels, `objectiveId.ts`'s abbreviations, plus their web mirror) are the
+  only places that needed a real edit — everything else (curriculum
+  content parsing, day generation, block validation, evidence packets,
+  hour aggregation, dashboard gauges, extracurricular tagging, the
+  teacher UI's subject dropdowns) already iterates `CORE_SUBJECTS`/
+  `SPECIALTY_SUBJECTS`/`ALL_SUBJECTS` generically and picked PE up for
+  free, confirmed by a clean `tsc --noEmit` on both apps after the
+  registry change (the compiler itself is what proves nothing hardcoded
+  was missed).
+
+  Morning PE/movement: the locked daily opening (Pledge -> PE/movement ->
+  academic day) is now represented as a real, structural first block —
+  `proposedDays.ts`'s generation prompt requires a `physical_education`
+  block as `learningBlocks[0]` every instructional day, with real
+  educational intent (movement skill/coordination/balance/endurance/
+  mobility/body awareness/safe-exercise habits/teamwork), daily variety
+  (a rotating list of appropriate categories), safety limits (no unsafe/
+  max-effort prescriptions), and age differentiation from the student's
+  own context (a young child gets pure play/gross-motor movement with no
+  performance metrics; an older child may get a real skill/coordination
+  objective and teacher-observed evidence). Never trusting the model to
+  reliably comply (this file's own standing principle), a new pure
+  `curriculum/blockValidation.ts#ensureMorningPhysicalEducationBlock`
+  GUARANTEES the block exists: if the model's response has no PE block at
+  all, one is inserted at index 0 and every other block is renamed
+  (`b1`->`b2`, etc.) with `dependsOn` references remapped alongside it —
+  a pure rename, never a reorder of existing blocks relative to each
+  other, so the "only ever depends on a strictly earlier block" invariant
+  is never disturbed. Deliberately does NOT force-reorder an
+  existing-but-misplaced PE block (accepted, documented scope limit — see
+  the full report).
+
+  Evidence/mastery: PE blocks use the exact same step-6 evidence pipeline
+  as every other subject — `evidenceHours.ts`/`evidenceMastery.ts` are
+  fully subject-generic and needed zero changes. Teacher-observation/
+  physical-demonstration evidence types already existed (added for
+  Maizley's demonstration-based track) and already support "demonstrates
+  balance sequence"-style PE evidence with no quiz required.
+
+  **Flagged for Cory/Sarah, not invented here (the step 7 instruction's
+  most important governance constraint):** the actual weekly-hour
+  allocation for PE. Inspection confirmed the existing 28 hrs/week Q1
+  figure (`curriculum/weeklyHours.ts`, sourced from
+  `q1_fall_curriculum_overview.md`'s own "Weekly hour budget") is a
+  deliberately-authored pacing number already exceeding Missouri's
+  required ~27.8 hrs/week pace by design — and that NO PE/movement content
+  is already implicitly folded into any of the other 8 subjects' real
+  curriculum files (bushcraft's outdoor content is survival/wayfinding
+  skills, not exercise). There is no honest time to reclassify without
+  either growing that authored weekly total or shrinking one of the other
+  8 subjects' authored hours — both real curriculum-content decisions.
+  `weekHours()` therefore deliberately assigns PE no hours yet; per
+  `computeSubjectWeights`'s existing, unchanged fallback behavior, this
+  gives PE's dashboard pace gauge an honest weight/target of 0 (not a
+  crash, not a guessed number, not an even-split default) until a real
+  figure is set. THE QUESTION FOR CORY/SARAH: how many hours/week should
+  PE be, and should it be additional (raising the 28-hr total) or
+  reallocated from an existing specialty subject (and if so, which, and
+  by how much)? One line in `weeklyHours.ts`'s `weekHours()` implements
+  whichever answer comes back — deliberately not touched until then.
+
+  11 new unit tests (225 -> 236): PE's objective-id abbreviation round-trips
+  like any other subject; `ensureMorningPhysicalEducationBlock` inserts,
+  renames/remaps, and no-ops correctly; `subjectWeights.test.ts` (new)
+  locks in PE's honest zero-weight behavior against the real bundled Q1
+  data. No Firestore rules/index changes — PE flows through every
+  existing subject-generic collection and query. Not deployed.
+
+Next up: step 8, once you've reviewed step 7 AND answered the PE
+weekly-hour question above.
 
 ---
 

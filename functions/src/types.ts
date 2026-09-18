@@ -41,6 +41,18 @@ export const SPECIALTY_SUBJECTS = [
   "homestead_skills",
   "nature_identification",
   "spiritual_cultural",
+  /**
+   * Added build-order step 7 — PE as a first-class WBK curriculum
+   * component, not folded into another subject or left as generic
+   * unclassified activity. A specialty subject (not core): it isn't one
+   * of Missouri's four core-hours subjects and was never part of the
+   * 400-hour home-core requirement, exactly like bushcraft/homestead/
+   * nature/spiritual above. See curriculum/weeklyHours.ts's doc comment
+   * for why it deliberately has NO weekly-hour figure yet — that specific
+   * number is a real curriculum decision still pending from Cory/Sarah,
+   * not something invented here.
+   */
+  "physical_education",
 ] as const;
 
 export type CoreSubject = (typeof CORE_SUBJECTS)[number];

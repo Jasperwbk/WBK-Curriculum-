@@ -254,6 +254,76 @@ function normalizeOneBlock(
   };
 }
 
+const DEFAULT_MORNING_PE_MINUTES = 15;
+
+/**
+ * Guarantees at least one `physical_education` block exists in a day's
+ * final block list (build-order step 7 — PE must be a first-class,
+ * always-present component of the locked daily opening: Pledge -> morning
+ * PE/movement -> the rest of the academic day, never folded into the
+ * Jasper Morning Message or left to chance). The generation prompt
+ * (proposedDays.ts) asks Claude for this block every time and to place it
+ * first, but — matching this file's own standing principle of never
+ * trusting the model to reliably do what it was asked — this is the
+ * actual guarantee: if nothing in the model's response survived
+ * validation as a `physical_education` block, one is inserted here.
+ *
+ * Deliberately does NOT reorder an existing-but-misplaced PE block (e.g.
+ * one Claude put at index 2 instead of 0) — only inserting when one is
+ * missing entirely. Reordering existing blocks would mean rewriting
+ * `dependsOn` relationships across the whole array to preserve the "only
+ * ever depends on a strictly earlier block" invariant, which is materially
+ * more machinery than this focused integration step calls for; the
+ * literal first-position placement is a display nicety (Pledge itself is
+ * handled the same prompted-only way, with no structural enforcement at
+ * all), not a governance-critical guarantee. What matters and IS
+ * guaranteed here is that the block exists at all.
+ *
+ * When it does insert, every existing block is renamed (b1->b2, b2->b3,
+ * ...) rather than reordered relative to each other — a pure rename, with
+ * every `dependsOn` reference remapped alongside it, so the "depends only
+ * on a strictly earlier block" invariant established by
+ * validateAndNormalizeBlocks is preserved exactly, never re-derived or
+ * re-validated.
+ */
+export function ensureMorningPhysicalEducationBlock(
+  blocks: readonly LearningBlock[],
+  studentId: string,
+  sourceQuarterCertificationId: string | null,
+  sourceWeeklyCertificationId: string | null
+): LearningBlock[] {
+  if (blocks.some((b) => b.subject === "physical_education")) {
+    return [...blocks];
+  }
+
+  const peBlock: LearningBlock = {
+    blockId: "b1",
+    studentId,
+    subject: "physical_education",
+    title: "Morning Movement",
+    objectiveIds: [],
+    stage: "guided_practice",
+    estimatedMinutes: DEFAULT_MORNING_PE_MINUTES,
+    required: true,
+    completionState: "not_started",
+    dependsOn: [],
+    teacherLocked: false,
+    order: 0,
+    sourceQuarterCertificationId,
+    sourceWeeklyCertificationId,
+  };
+
+  const idRemap = new Map<string, string>(blocks.map((b, i) => [b.blockId, `b${i + 2}`]));
+  const shifted = blocks.map((b, i) => ({
+    ...b,
+    blockId: `b${i + 2}`,
+    order: i + 1,
+    dependsOn: b.dependsOn.map((d) => ({ blockId: idRemap.get(d.blockId) ?? d.blockId })),
+  }));
+
+  return [peBlock, ...shifted];
+}
+
 export function validateAndNormalizeBlocks(params: ValidateBlocksParams): LearningBlock[] {
   const rawArray = Array.isArray(params.raw) ? params.raw : [];
   const freshOrdinalCounters = new Map<Subject, number>();

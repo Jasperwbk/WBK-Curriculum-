@@ -36,6 +36,25 @@ export const Q1_FALL_WEEKLY_HOURS: readonly WeeklySubjectHours[] = [
   { week: 9, hours: weekHours() },
 ];
 
+/**
+ * `physical_education` is deliberately ABSENT from this table (build-order
+ * step 7) — not an oversight. The 28 hrs/week figure below is Cory/Sarah's
+ * own authored curriculum-planning number (q1_fall_curriculum_overview.md's
+ * "Weekly hour budget"), explicitly designed to clear Missouri's ~27.8
+ * hrs/week required pace with a small margin. Inspection for step 7 found
+ * no PE/movement content already implicitly folded into any of these 8
+ * subjects' real curriculum files — bushcraft's outdoor content is
+ * survival/wayfinding skills, not exercise — so there is no existing time
+ * to honestly reclassify, and there is no way to assign PE a real weekly-
+ * hour figure without either (a) growing this authored weekly total, or
+ * (b) shrinking one of the other 8 subjects' authored hours, both of which
+ * are curriculum-content decisions, not coding decisions. Per the step 7
+ * instruction, that decision is left to Cory/Sarah rather than invented
+ * here — see the step 7 report. Until it's set, `computeSubjectWeights`
+ * (subjectWeights.ts) correctly gives physical_education a weight of 0 via
+ * its existing `totals[subject] ?? 0` fallback — no crash, no invented
+ * number, just an honestly-zero pace target until a real one is decided.
+ */
 function weekHours(): Partial<Record<Subject, number>> {
   return {
     reading_language_arts: 5,

@@ -33,6 +33,7 @@ const SUBJECT_LABELS: Record<Subject, string> = {
   homestead_skills: "Homestead Skills",
   nature_identification: "Nature Identification",
   spiritual_cultural: "Spiritual / Cultural",
+  physical_education: "Physical Education",
 };
 
 /** Human-readable label for a standardized subject string, for prompts/UI. */
