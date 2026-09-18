@@ -38,8 +38,19 @@ deployed**:
   later work, not bundled into step 2. First real consumer will be step 3
   (quarter/weekly certification).
 
-Next up: step 3 (quarter + weekly certification objects), only once
-you've reviewed steps 1–2.
+- **Step 3 — done, awaiting your review.** Quarter + weekly certification
+  foundation and gates (`functions/src/certification.ts`,
+  `curriculum/certificationStatus.ts`/`certificationGate.ts`/
+  `contentHash.ts`/`certificationSchedule.ts`), built on the step-2
+  primitive. `generatePlan` now refuses to ground a new plan in curriculum
+  content that exists but isn't currently certified. Q1 will trip this the
+  moment it's deployed, until a teacher runs the new (idempotent,
+  additive) `bootstrapExistingCertifications` callable once — see the full
+  report delivered separately for the complete lifecycle, migration path,
+  and test coverage. Does not implement step 4 (two-day-ahead generation,
+  Jasper Morning Message, itinerary).
+
+Next up: step 4, only once you've reviewed step 3.
 
 ---
 
@@ -202,13 +213,21 @@ no general cross-source de-duplication model.
 
 ## 4. NOT IMPLEMENTED — genuinely new work
 
-- **Quarter as a certified, versioned object** — no `Quarter`/certification
-  collection exists at all. Nothing today prevents building/using Q2
-  content before Q1 evidence is reviewed (not a conflict — just an
-  unenforced guardrail).
-- **Weekly certification workflow** — no concept of a weekly proposal, no
-  Friday-review/Sunday-certify deadline logic, no per-teacher
-  certification identity/timestamp record.
+- ~~**Quarter as a certified, versioned object**~~ — **done (step 3).**
+  `quarterCertifications/{id}`, immutable hash-compared records, teacher
+  uid/timestamp/source. Guardrail is enforced for `generatePlan` (won't
+  ground a new plan in uncertified content); still not enforced anywhere
+  that would stop building/using Q2 content before Q1 evidence is
+  reviewed — that's a process/judgment call, not a code gate, and wasn't
+  asked for in step 3.
+- ~~**Weekly certification workflow**~~ — **done (step 3),** minus the
+  deadline *enforcement* specifically. `weeklyCertifications/{id}` exists,
+  gated behind a certified quarter, immutable hash-compared, teacher
+  uid/timestamp/source. `WeeklyCertificationSchedule` (configurable
+  Friday-review/Sunday-certify default) exists as data on `Family` but
+  nothing acts on it yet — no automation enforces the deadline. That's
+  intentionally deferred to step 4 (two-day-ahead generation is where a
+  deadline would actually matter).
 - **Two-day-ahead automatic daily generation** — today `generatePlan` only
   runs when a teacher manually triggers it for a chosen date; there's no
   background process keeping the next ~2 days pre-generated.
@@ -294,7 +313,8 @@ explicit approval regardless of local test results.
    established (types only, no selection logic yet).
 2. ~~**Generalize the teacher-approval primitive**~~ — **done.**
    `functions/src/approvals.ts` + `proposals`/`auditEvents` collections.
-3. **Quarter + weekly certification** — first real consumer of #2.
+3. ~~**Quarter + weekly certification**~~ — **done.** First real consumer
+   of #2; see `functions/src/certification.ts`.
 4. **Two-day-ahead daily generation**, including Jasper Morning Message and
    Strict/Flexible itinerary.
 5. **Day plans upgraded to block/objective-level structure**, including
