@@ -50,6 +50,8 @@ export interface Family {
   weeklyCertificationSchedule?: WeeklyCertificationSchedule;
   /** Optional — see CurriculumGovernanceState. Undefined means "legacy" (pre-governance compatibility). */
   curriculumGovernance?: CurriculumGovernanceState;
+  /** Optional — how many days ahead of the school date proposed days should target. Undefined means DEFAULT_GENERATION_LEAD_DAYS (2) — see generationSchedule.ts. Configurable rather than a hardcoded "48 hours" assumption. */
+  dayGenerationLeadDays?: number;
 }
 
 export interface UserProfile {
@@ -425,11 +427,12 @@ export interface CurriculumGovernanceState {
 }
 
 /**
- * Configurable deadlines for the weekly review/certify cadence (not yet
- * enforced by any automation — that arrives with build-order step 4's
- * two-day-ahead generation; this just makes the schedule data instead of
- * a hardcoded assumption). Falls back to
- * DEFAULT_WEEKLY_CERTIFICATION_SCHEDULE (Friday 17:00 review / Sunday
+ * Configurable deadlines for the weekly review/certify cadence. Still not
+ * enforced by any automation as of build-order step 4 (there's no
+ * background scheduler yet — see proposedDays.ts's doc comment on what
+ * step 4 does and doesn't build); this makes the schedule data instead of
+ * a hardcoded assumption, for whenever that automation exists. Falls back
+ * to DEFAULT_WEEKLY_CERTIFICATION_SCHEDULE (Friday 17:00 review / Sunday
  * 20:00 certify) when a family hasn't set one.
  */
 export interface WeeklyCertificationSchedule {
@@ -438,4 +441,109 @@ export interface WeeklyCertificationSchedule {
   reviewByTime: string; // "HH:mm", 24h local time
   certifyByDayOfWeek: number;
   certifyByTime: string;
+}
+
+// --- Two-day-ahead proposed days (Builder Guide §6-7, §21; build-order
+// step 4) ---
+//
+// Extends the existing day-plan concept (dayPlans/{planId} — freeform,
+// teacher-prompted, multi-student, still used unchanged for ad hoc days
+// like field trips) with a second, parallel pipeline: one governed,
+// per-student proposal per school date, generated ahead of time from
+// certified content, reviewed/edited by a teacher, and only then
+// approved/published. The two collections stay separate rather than
+// cramming both shapes into one schema — see proposedDays.ts's doc
+// comment for why.
+//
+// Like the certification records above, a ProposedDay is never mutated
+// once written for a MATERIAL change — proposalVersion increments and a
+// new doc is written instead, so every version that ever existed (and
+// which one was actually approved) stays in history. The one thing that
+// DOES mutate a doc in place is approval itself (status/approvedByUid/
+// approvedAt/itineraryMode/jasperMessage.edited/content overrides) — that
+// happens once, and an approved doc is never regenerated afterward.
+
+export type ProposedDayStatus = "proposed" | "approved";
+
+/** Whether a day grounds in ordinary certified curriculum or an explicit DayDesignation override — see dayDesignation.ts. Never inferred; see certificationGate.ts. */
+export type ProposedDayType = "ordinary" | "alternativePackage" | "nonInstructional";
+
+export type ItineraryMode = "strict" | "flexible";
+
+/**
+ * Jasper's per-child morning greeting. `generated` is set once, at
+ * generation time, and never overwritten — a teacher's edit is stored
+ * separately in `edited`, so the original AI draft is always recoverable.
+ * The message actually shown to a student once published is `edited ??
+ * generated`. null only for a "nonInstructional" day, which doesn't need
+ * a greeting into a school day that isn't happening.
+ */
+export interface JasperMessage {
+  generated: string;
+  edited?: string;
+}
+
+/** Deliberately lightweight — step 5 deepens this into a real block/objective engine; step 4 only needs enough to display and to distinguish strict/flexible eligibility later. */
+export interface LearningBlockSummary {
+  subject: Subject;
+  description: string;
+}
+
+export interface ProposedDay {
+  familyId: string;
+  studentId: string;
+  date: string; // ISO "YYYY-MM-DD"
+  quarter: Quarter | null; // null when the date falls outside the school year entirely
+  week: number | null;
+
+  dayType: ProposedDayType;
+  /** Set only when dayType is alternativePackage/nonInstructional. */
+  dayDesignationId: string | null;
+
+  // --- Source/version traceability (so it's always possible to tell
+  // exactly what certified version a proposal was generated from) ---
+  governanceModeAtGeneration: CurriculumGovernanceMode;
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
+  /**
+   * The idempotency comparison key — see proposedDayLifecycle.ts. A
+   * certification id when one exists ("cert:<id>"), a content hash when
+   * generation grounded on legacy-mode content with no certification
+   * ("content:<hash>"), a designation id when dayType isn't "ordinary"
+   * ("designation:<id>"), or "none" when there was nothing to ground on
+   * at all. Comparing this value across calls is how generateProposedDays
+   * decides whether regeneration is actually needed.
+   */
+  sourceSignature: string;
+
+  status: ProposedDayStatus;
+  /** 1 the first time this (familyId, studentId, date) is ever generated, incrementing on each regeneration. */
+  proposalVersion: number;
+  /** The previous version's doc id, when this version supersedes one — null for proposalVersion 1. */
+  supersedesProposalId: string | null;
+
+  generatedAt: Timestamp;
+  generatedByUid: string;
+
+  title: string;
+  summary: string;
+  planText: string;
+  /** null only for a "nonInstructional" day. */
+  jasperMessage: JasperMessage | null;
+  /** Claude's suggestion at generation time — the teacher can accept or override it; see itineraryMode below. */
+  suggestedItineraryMode: ItineraryMode | null;
+  learningBlocks: LearningBlockSummary[];
+  /**
+   * Carry-forward/incomplete-work notes from the prior school day, when
+   * available. Nothing in the app produces real carry-forward data yet —
+   * there's no per-block completion tracking (that's step 5's block
+   * engine) — so this is always empty today. Reserved now so step 5 has
+   * somewhere to write it without another schema change.
+   */
+  carryForwardNotes: string[];
+
+  // --- Set only once approved (undefined before that) ---
+  itineraryMode?: ItineraryMode;
+  approvedByUid?: string;
+  approvedAt?: Timestamp;
 }

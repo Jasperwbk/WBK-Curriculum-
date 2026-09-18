@@ -28,6 +28,11 @@ function sha256(value: unknown): string {
   return createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
+/** Hashes a plain string — used by proposedDayLifecycle.ts for the legacy-mode (no certification id) idempotency signature fallback. */
+export function hashText(text: string): string {
+  return sha256(text);
+}
+
 /**
  * Quarter-level material: the theme arc only (each week's number + title),
  * NOT each week's rawContent/hours — those are certified independently at

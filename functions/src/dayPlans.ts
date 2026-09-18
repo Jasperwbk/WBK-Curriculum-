@@ -12,11 +12,24 @@ import {
   type FamilyQuarterStatusResult,
   type FamilyWeekStatusResult,
 } from "./curriculum/certificationStatus";
-import { evaluateCertificationGate } from "./curriculum/certificationGate";
+import { evaluateCertificationGate, type CertificationGateOutcome } from "./curriculum/certificationGate";
 import { getCurriculumGovernanceMode } from "./curriculum/curriculumGovernance";
-import { getDayDesignationsForDate, findDesignationForKid } from "./curriculum/dayDesignation";
+import {
+  getDayDesignationsForDate,
+  findDesignationForKid,
+  type DayDesignationLookup,
+} from "./curriculum/dayDesignation";
 import { inferKidKey } from "./curriculum/placementTestItems";
-import type { CurriculumGovernanceMode, DayDesignation, Family, MasteryRecord, Quarter, Subject, UserProfile } from "./types";
+import type {
+  CurriculumGovernanceMode,
+  DayDesignationType,
+  Family,
+  MasteryRecord,
+  PlacementKidKey,
+  Quarter,
+  Subject,
+  UserProfile,
+} from "./types";
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
@@ -34,10 +47,30 @@ interface GeneratedPlan {
   planText: string;
 }
 
-interface StudentContext {
+/**
+ * Exported for reuse by proposedDays.ts (build-order step 4): the
+ * two-day-ahead governed pipeline needs the exact same per-student
+ * gate/grounding decision generatePlan already makes — reusing this
+ * function rather than re-implementing the gate check keeps the two
+ * pipelines from ever silently disagreeing about what's allowed. Every
+ * field below is additive to what generatePlan itself reads
+ * (contextLine/weeklyCertificationId) — its own behavior is unchanged.
+ */
+export interface StudentContext {
   contextLine: string;
   /** The FamilyWeeklyCertification this context's curriculum-content grounding was based on, when there was one. */
   weeklyCertificationId: string | null;
+  /** The FamilyQuarterCertification current at generation time, when there was one. */
+  quarterCertificationId: string | null;
+  kidKey: PlacementKidKey | null;
+  quarterAndWeek: { quarter: Quarter; week: number } | null;
+  /** null only when kidKey or quarterAndWeek couldn't resolve at all (nothing to gate). */
+  gateOutcome: CertificationGateOutcome | null;
+  dayDesignationId: string | null;
+  dayDesignationType: DayDesignationType | null;
+  dayDesignationDescription: string | null;
+  /** The raw week content text used for grounding, when the gate allowed it (certified or legacy). */
+  weekContent: string | null;
 }
 
 /**
@@ -59,14 +92,14 @@ interface StudentContext {
  * quarter, or (3.2) the quarter itself isn't currently certified at all
  * under "governed" mode — rather than silently proceeding.
  */
-async function buildStudentContext(
+export async function buildStudentContext(
   studentId: string,
   familyId: string,
   governanceMode: CurriculumGovernanceMode,
   quarterAndWeek: { quarter: Quarter; week: number } | null,
   familyQuarterStatus: FamilyQuarterStatusResult | null,
   familyWeekStatus: FamilyWeekStatusResult | null,
-  dayDesignations: DayDesignation[]
+  dayDesignations: DayDesignationLookup[]
 ): Promise<StudentContext | null> {
   const db = getFirestore();
   const snap = await db.collection("users").doc(studentId).get();
@@ -117,6 +150,11 @@ async function buildStudentContext(
   }
 
   let weeklyCertificationId: string | null = null;
+  let gateOutcome: CertificationGateOutcome | null = null;
+  let dayDesignationId: string | null = null;
+  let dayDesignationType: DayDesignationType | null = null;
+  let dayDesignationDescription: string | null = null;
+  let usedWeekContent: string | null = null;
   const kidKey = inferKidKey(profile.displayName);
   if (kidKey && quarterAndWeek) {
     const weekContent = await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week);
@@ -133,6 +171,7 @@ async function buildStudentContext(
       quarter: quarterAndWeek.quarter,
       week: quarterAndWeek.week,
     });
+    gateOutcome = gate.outcome;
 
     if (!gate.allow) {
       throw new HttpsError("failed-precondition", gate.reason);
@@ -141,6 +180,9 @@ async function buildStudentContext(
     if (gate.outcome === "alternative_package" || gate.outcome === "non_instructional") {
       const label = gate.outcome === "alternative_package" ? "an approved alternative package" : "an approved non-instructional day";
       lines.push(`  --- Today is explicitly designated as ${label} for ${profile.displayName}: ${gate.description} ---`);
+      dayDesignationId = designation?.id ?? null;
+      dayDesignationType = designation?.type ?? null;
+      dayDesignationDescription = designation?.description ?? null;
       // Deliberately does not use weekContent even if some exists — an
       // explicit designation overrides ordinary curriculum grounding for
       // this date, it doesn't add to it.
@@ -153,6 +195,7 @@ async function buildStudentContext(
       if (gate.outcome === "certified") {
         weeklyCertificationId = familyWeekStatus?.latest?.id ?? null;
       }
+      usedWeekContent = weekContent;
       lines.push(
         `  --- This week's actual curriculum content (${quarterAndWeek.quarter.toUpperCase()} Week ${quarterAndWeek.week}), ` +
           `verbatim from the real curriculum file. Base today's specific topics/objectives/activities on this ` +
@@ -162,7 +205,18 @@ async function buildStudentContext(
     }
   }
 
-  return { contextLine: lines.join("\n"), weeklyCertificationId };
+  return {
+    contextLine: lines.join("\n"),
+    weeklyCertificationId,
+    quarterCertificationId: familyQuarterStatus?.latest?.id ?? null,
+    kidKey,
+    quarterAndWeek,
+    gateOutcome,
+    dayDesignationId,
+    dayDesignationType,
+    dayDesignationDescription,
+    weekContent: usedWeekContent,
+  };
 }
 
 function formatObjectives(records: MasteryRecord[]): string {

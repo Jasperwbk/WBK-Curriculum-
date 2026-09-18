@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/log", label: "Log activity", end: false },
   { to: "/plan", label: "Plan a day", end: false },
+  { to: "/proposed-days", label: "Two-day-ahead", end: false },
   { to: "/placement", label: "Placement test", end: false },
   { to: "/checkin", label: "Weekly check-in", end: false },
   { to: "/upload", label: "Upload", end: false },

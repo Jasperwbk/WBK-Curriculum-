@@ -153,6 +153,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Two-day-ahead governed daily proposals (build-order step 4), written
+    // only by generateProposedDays/approveProposedDay
+    // (functions/src/proposedDays.ts, via the approval primitive above —
+    // admin SDK, bypasses these rules). Teacher-only for now: no
+    // student-facing "day of" published view exists yet to read an
+    // approved doc from, so there's no owner-read clause here the way
+    // dayPlans has one — add it when that view is actually built, so an
+    // unapproved proposal is never accidentally exposed to a student in
+    // the meantime (requirement: a student must never receive an
+    // unapproved proposed day as though it were published curriculum).
+    match /proposedDays/{proposedDayId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
     // Database-backed curriculum content (the "upload a new quarter" flow).
     // Written directly by the teacher's client after a local, deterministic
     // parse — no Cloud Function in the loop, same trust level as logs/tests.

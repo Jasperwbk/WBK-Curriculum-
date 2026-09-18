@@ -76,6 +76,24 @@
         { "fieldPath": "familyId", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "proposedDays",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "studentId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" },
+        { "fieldPath": "proposalVersion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "proposedDays",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
