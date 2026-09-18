@@ -126,17 +126,29 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Quarter + weekly certification (build-order step 3), written only by
+    // Quarter + weekly certification (build-order step 3, revised 3.1 —
+    // FAMILY-level instructional package, per-kid hashes preserved inside
+    // each doc's childContent field for traceability), written only by
     // certifyQuarter/certifyWeek/bootstrapExistingCertifications
     // (functions/src/certification.ts, via the approval primitive above —
     // admin SDK, bypasses these rules). Teacher-only read, same trust level
     // as curriculumContent — these records are a curriculum-readiness
     // concern, not a student's own record, so no owner-read clause.
-    match /quarterCertifications/{certId} {
+    match /familyQuarterCertifications/{certId} {
       allow read: if isTeacherInFamily(resource.data.familyId);
       allow write: if false;
     }
-    match /weeklyCertifications/{certId} {
+    match /familyWeeklyCertifications/{certId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
+    // Explicit teacher-declared day designations (build-order step 3.1) —
+    // the only way a date is ever represented as an approved alternative-
+    // package or non-instructional (PTO/break) day to the certification
+    // gate; never inferred. Written only by designateDay
+    // (functions/src/certification.ts, via the approval primitive above).
+    match /dayDesignations/{designationId} {
       allow read: if isTeacherInFamily(resource.data.familyId);
       allow write: if false;
     }

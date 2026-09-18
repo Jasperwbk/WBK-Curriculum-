@@ -7,4 +7,4 @@ export { parseExtracurricular, confirmExtracurricular } from "./extracurriculars
 export { generatePlan } from "./dayPlans";
 export { submitPlacementTest, submitPrintableCheckIn, submitPlacementResponses } from "./placementTest";
 export { submitCheckIn } from "./checkIn";
-export { certifyQuarter, certifyWeek, bootstrapExistingCertifications } from "./certification";
+export { certifyQuarter, certifyWeek, bootstrapExistingCertifications, designateDay } from "./certification";

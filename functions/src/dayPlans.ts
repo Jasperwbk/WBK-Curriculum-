@@ -6,10 +6,11 @@ import { requireCaller, requireTeacher } from "./util/auth";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getQuarterAndWeek, loadWeekContent } from "./curriculum/loadCurriculumContent";
-import { getWeeklyCertificationStatus } from "./curriculum/certificationStatus";
+import { getFamilyWeeklyCertificationStatus, type FamilyWeekStatusResult } from "./curriculum/certificationStatus";
 import { evaluateCertificationGate } from "./curriculum/certificationGate";
+import { getDayDesignationsForDate, findDesignationForKid } from "./curriculum/dayDesignation";
 import { inferKidKey } from "./curriculum/placementTestItems";
-import type { Family, MasteryRecord, Subject, UserProfile } from "./types";
+import type { DayDesignation, Family, MasteryRecord, Quarter, Subject, UserProfile } from "./types";
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
@@ -29,7 +30,7 @@ interface GeneratedPlan {
 
 interface StudentContext {
   contextLine: string;
-  /** The WeeklyCertification this context's curriculum-content grounding was based on, when there was one. */
+  /** The FamilyWeeklyCertification this context's curriculum-content grounding was based on, when there was one. */
   weeklyCertificationId: string | null;
 }
 
@@ -41,17 +42,21 @@ interface StudentContext {
  * student can't be resolved (unknown id, non-family-member, etc.) — the
  * generator still works with less context rather than failing outright.
  *
- * Throws failed-precondition if the resolved week HAS curriculum content
- * but that content isn't currently certified (build-order step 3's
- * certification gate — see certificationGate.ts) — generatePlan refuses to
- * ground a new plan in uncertified/stale content rather than silently
- * using it. A week with no content at all is unaffected (nothing to gate).
+ * Certification gate (build-order step 3, revised 3.1 — see
+ * certificationGate.ts for the full state machine): quarterAndWeek and
+ * familyWeekStatus are resolved ONCE by the caller (they don't vary per
+ * student — the family week status governs every kid's package together),
+ * and dayDesignations is this date's full list of explicit teacher
+ * overrides, also fetched once. Throws failed-precondition when the gate
+ * blocks (content exists but uncertified/stale, or content is unexpectedly
+ * missing in a governed quarter) rather than silently proceeding.
  */
 async function buildStudentContext(
   studentId: string,
   familyId: string,
-  schoolYearStart: Date,
-  planDate: Date
+  quarterAndWeek: { quarter: Quarter; week: number } | null,
+  familyWeekStatus: FamilyWeekStatusResult | null,
+  dayDesignations: DayDesignation[]
 ): Promise<StudentContext | null> {
   const db = getFirestore();
   const snap = await db.collection("users").doc(studentId).get();
@@ -103,30 +108,40 @@ async function buildStudentContext(
 
   let weeklyCertificationId: string | null = null;
   const kidKey = inferKidKey(profile.displayName);
-  if (kidKey) {
-    const quarterAndWeek = getQuarterAndWeek(schoolYearStart, planDate);
-    const weekContent = quarterAndWeek
-      ? await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week)
-      : null;
-    if (weekContent && quarterAndWeek) {
-      const weekStatus = await getWeeklyCertificationStatus(
-        familyId,
-        kidKey,
-        quarterAndWeek.quarter,
-        quarterAndWeek.week
-      );
-      const gate = evaluateCertificationGate({
-        hasContent: true,
-        weekStatus: weekStatus.status,
-        kidKey,
-        quarter: quarterAndWeek.quarter,
-        week: quarterAndWeek.week,
-      });
-      if (!gate.allow) {
-        throw new HttpsError("failed-precondition", gate.reason);
-      }
-      weeklyCertificationId = weekStatus.latest?.id ?? null;
+  if (kidKey && quarterAndWeek) {
+    const weekContent = await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week);
+    const designation = findDesignationForKid(dayDesignations, kidKey);
 
+    const gate = evaluateCertificationGate({
+      quarterGoverned: familyWeekStatus?.quarterGoverned ?? false,
+      hasContent: weekContent !== null,
+      familyWeekStatus: familyWeekStatus?.status ?? "neverCertified",
+      staleKidKeys: familyWeekStatus?.staleKidKeys ?? [],
+      dayDesignation: designation,
+      kidKey,
+      quarter: quarterAndWeek.quarter,
+      week: quarterAndWeek.week,
+    });
+
+    if (!gate.allow) {
+      throw new HttpsError("failed-precondition", gate.reason);
+    }
+
+    if (gate.outcome === "alternative_package" || gate.outcome === "non_instructional") {
+      const label = gate.outcome === "alternative_package" ? "an approved alternative package" : "an approved non-instructional day";
+      lines.push(`  --- Today is explicitly designated as ${label} for ${profile.displayName}: ${gate.description} ---`);
+      // Deliberately does not use weekContent even if some exists — an
+      // explicit designation overrides ordinary curriculum grounding for
+      // this date, it doesn't add to it.
+    } else if (weekContent) {
+      // Reaches here only for "certified" or "not_governed" — both
+      // "blocked_*" outcomes already threw above. "not_governed" grounds
+      // on whatever content exists exactly like pre-certification
+      // behavior (nothing is being enforced yet for this quarter); only
+      // "certified" has an actual certification record to attribute it to.
+      if (gate.outcome === "certified") {
+        weeklyCertificationId = familyWeekStatus?.latest?.id ?? null;
+      }
       lines.push(
         `  --- This week's actual curriculum content (${quarterAndWeek.quarter.toUpperCase()} Week ${quarterAndWeek.week}), ` +
           `verbatim from the real curriculum file. Base today's specific topics/objectives/activities on this ` +
@@ -180,6 +195,13 @@ function subjectsWhereEveryTrackedObjectiveIsAced(records: MasteryRecord[]): Sub
  * less personalization — useful for a pure field-trip/fun day where none of
  * this applies anyway.
  *
+ * Curriculum-content grounding is gated by the family's certification
+ * status (build-order step 3, revised 3.1 — certificationGate.ts): a
+ * governed quarter/week with expected-but-uncertified or unexpectedly
+ * missing content blocks generation outright rather than silently
+ * degrading, unless an explicit DayDesignation says the date is an
+ * approved alternative-package or non-instructional day.
+ *
  * Does not yet assign a Historical Figure Coloring pick (build-order step 8
  * — see functions/src/curriculum/historicalFigureSelector.ts); the prior
  * subject-ring color-sheet assignment that used to fill this role has been
@@ -214,8 +236,21 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         const family = familySnap.data() as Family;
         const schoolYearStart = family.schoolYear.startDate.toDate();
         const planDate = new Date(date);
+
+        // Resolved ONCE, not per student: the family week's certification
+        // status and this date's explicit teacher overrides both govern
+        // every kid's package together, not independently (build-order
+        // step 3.1 — see certificationGate.ts).
+        const quarterAndWeek = getQuarterAndWeek(schoolYearStart, planDate);
+        const [familyWeekStatus, dayDesignations] = await Promise.all([
+          quarterAndWeek
+            ? getFamilyWeeklyCertificationStatus(familyId, quarterAndWeek.quarter, quarterAndWeek.week)
+            : Promise.resolve(null),
+          getDayDesignationsForDate(familyId, date),
+        ]);
+
         const contexts = await Promise.all(
-          ids.map((id) => buildStudentContext(id, familyId, schoolYearStart, planDate))
+          ids.map((id) => buildStudentContext(id, familyId, quarterAndWeek, familyWeekStatus, dayDesignations))
         );
         const validContexts = contexts.filter((c): c is StudentContext => c !== null);
         if (validContexts.length > 0) {

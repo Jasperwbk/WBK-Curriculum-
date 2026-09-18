@@ -254,6 +254,7 @@ export interface UploadRecord {
 export type ProposalKind =
   | "quarterCertification"
   | "weeklyCertification"
+  | "dayDesignation"
   | "dayPlanPublication"
   | "curriculumCorrection"
   | "learnerLevelAdaptation"
@@ -295,7 +296,7 @@ export interface AuditEvent {
 }
 
 // --- Quarter + weekly certification (Builder Guide §4-5, §21; build-order
-// step 3) ---
+// step 3, revised 3.1) ---
 //
 // Wraps the existing curriculumContent (Firestore) / bundled static Q1
 // files with an explicit teacher-certification gate before generatePlan
@@ -303,20 +304,29 @@ export interface AuditEvent {
 // certifying a quarter or week IS approving a proposal of the matching
 // kind; these two collections hold the resulting committed records.
 //
-// Scoped per (familyId, kidKey, quarter[, week]) rather than per family —
-// that's the actual granularity curriculum content is stored and uploaded
-// at today (one curriculumContent doc per kid per quarter), so certifying
-// "Millaray's Q1" and "Makaio's Q1" are genuinely separate acts.
+// GOVERNANCE SCOPE (3.1): certification is a FAMILY-level instructional
+// package boundary, not three independent per-kid certifications. One
+// teacher action certifies "the family's Q1" or "the family's Q1 Week 3"
+// as a whole; the curriculum content underneath stays fully individualized
+// per student (Millaray/Makaio/Maizley each have their own content, own
+// hash, own version, preserved inside childContent below for exact
+// traceability). If any one child's material changes materially, the
+// FAMILY certification goes stale and needs re-certifying — the
+// certified *package* changed, even though the other two children's
+// content didn't. This is a governance/package boundary only; it does not
+// collapse the three children's curricula into identical content.
 //
 // No mutable "status" field: a record is an immutable, permanent statement
-// that a specific content hash was certified by a specific teacher at a
-// specific time (never edited or deleted, so certification history is
+// that a specific family package hash was certified by a specific teacher
+// at a specific time (never edited or deleted, so certification history is
 // always fully preserved). Whether a certification is *currently valid*
-// is computed on demand by comparing its certifiedContentHash against the
-// current content's hash (see contentHash.ts / certificationStatus.ts) —
-// if they no longer match, the content changed materially since
+// is computed on demand by comparing its familyContentHash against a
+// freshly computed one (see contentHash.ts / certificationStatus.ts) — if
+// they no longer match, some child's content changed materially since
 // certification and the most recent record is simply stale, without
-// needing to be mutated. A new certification is a new document.
+// needing to be mutated. A new certification is a new document. Per-kid
+// hashes inside childContent make it possible to identify exactly which
+// child's material caused that staleness.
 export type CertificationSource = "reviewed" | "bootstrap";
 // "reviewed"  — a teacher looked at this content and certified it directly.
 // "bootstrap" — a teacher retroactively certified pre-existing content
@@ -327,35 +337,59 @@ export type CertificationSource = "reviewed" | "bootstrap";
 //               event — just honestly flagged as retroactive, not a
 //               genuine line-by-line review.
 
-export interface QuarterCertification {
-  familyId: string;
+/** One child's content identity within a family certification package — the per-student traceability layer. */
+export interface ChildContentReference {
   kidKey: PlacementKidKey;
+  /** null means this child had no curriculum content at all at certification time (not an error by itself — see certificationGate.ts for when that's actually a problem). */
+  contentHash: string | null;
+}
+
+export interface FamilyQuarterCertification {
+  familyId: string;
   quarter: Quarter;
-  /** Hash of the quarter's shape only (week numbers + titles) — see
-   *  contentHash.ts#hashQuarterShape. Deliberately excludes each week's
-   *  rawContent/hours, which are certified independently at the weekly
-   *  level, so refining one week's prose doesn't force re-certifying the
-   *  whole quarter. */
-  certifiedContentHash: string;
+  /** Per-kid quarter-shape hashes (contentHash.ts#hashQuarterShape) at certification time — exact traceability of what each child's shape was. */
+  childContent: ChildContentReference[];
+  /** Deterministic hash-of-hashes over childContent (contentHash.ts#hashFamilyPackage) — the family package's own version identity; changes if ANY child's hash changes. */
+  familyContentHash: string;
   certifiedByUid: string;
   certifiedAt: Timestamp;
   source: CertificationSource;
 }
 
-export interface WeeklyCertification {
+export interface FamilyWeeklyCertification {
   familyId: string;
-  kidKey: PlacementKidKey;
   quarter: Quarter;
   week: number;
-  /** The QuarterCertification current at the moment this week was
-   *  certified — a week can't be certified while its quarter isn't. */
+  /** The FamilyQuarterCertification current at the moment this week was certified — a week can't be certified while its quarter isn't. */
   quarterCertificationId: string;
-  /** Hash of this week's actual material content — see
-   *  contentHash.ts#hashWeekContent. */
-  certifiedContentHash: string;
+  /** Per-kid week-content hashes (contentHash.ts#hashWeekContent) at certification time. */
+  childContent: ChildContentReference[];
+  familyContentHash: string;
   certifiedByUid: string;
   certifiedAt: Timestamp;
   source: CertificationSource;
+}
+
+// --- Explicit day designation (build-order step 3.1) ---
+//
+// generatePlan's certification gate must never *infer* that a day is an
+// approved alternative-package or non-instructional (PTO/break) day merely
+// because curriculum content happens to be absent — that has to be an
+// explicit, teacher-declared fact, recorded here, or the gate defaults to
+// treating missing-but-expected content as a real configuration problem
+// (see certificationGate.ts). Scoped per family+date; kidKeys says which
+// children it applies to (a field trip or break might not be every kid).
+export type DayDesignationType = "alternativePackage" | "nonInstructional";
+
+export interface DayDesignation {
+  familyId: string;
+  date: string; // ISO "YYYY-MM-DD", matches generatePlan's own date field
+  kidKeys: PlacementKidKey[];
+  type: DayDesignationType;
+  /** What the alternative package is, or why the day is non-instructional — shown to the generator/teacher, never fabricated. */
+  description: string;
+  createdByUid: string;
+  createdAt: Timestamp;
 }
 
 /**

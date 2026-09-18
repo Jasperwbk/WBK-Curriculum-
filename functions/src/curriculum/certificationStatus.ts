@@ -1,62 +1,65 @@
 import { getFirestore } from "firebase-admin/firestore";
-import type { PlacementKidKey, Quarter, QuarterCertification, WeeklyCertification } from "../types";
-import { hashQuarterShape, hashWeekContent } from "./contentHash";
-import { loadAllWeekEntries, loadWeekEntry } from "./loadCurriculumContent";
-import type { WeekCertificationStatus } from "./certificationGate";
+import type {
+  ChildContentReference,
+  FamilyQuarterCertification,
+  FamilyWeeklyCertification,
+  PlacementKidKey,
+  Quarter,
+} from "../types";
+import { diffStaleKidKeys, hashFamilyPackage, hashQuarterShape, hashWeekContent } from "./contentHash";
+import { loadAllWeekEntries, loadWeekEntry, PLACEMENT_KID_KEYS } from "./loadCurriculumContent";
+import type { FamilyWeekStatus } from "./certificationGate";
 
 /**
- * Firestore-querying half of certification status — resolves whether a
- * quarter or week is currently certified by comparing the most recent
- * certification record's stored hash against a freshly computed hash of
- * the content as it exists right now. See types.ts's QuarterCertification/
- * WeeklyCertification doc comments for why there's no mutable "status"
- * field to query instead.
+ * Firestore-querying half of certification status (build-order step 3.1:
+ * FAMILY-level packages, per-kid traceability underneath). Resolves
+ * whether the family's quarter/week package is currently certified by
+ * comparing the most recent certification record's familyContentHash
+ * against one freshly computed from every child's current content. See
+ * types.ts's FamilyQuarterCertification/FamilyWeeklyCertification doc
+ * comments for why there's no mutable "status" field to query instead.
  */
 
-export type QuarterOrWeekStatus = "certified" | "stale" | "neverCertified";
+export type QuarterOrWeekStatus = FamilyWeekStatus;
 
-export interface QuarterCertificationLookup {
+export interface FamilyQuarterCertificationLookup {
   id: string;
-  record: QuarterCertification;
+  record: FamilyQuarterCertification;
 }
 
-export interface WeeklyCertificationLookup {
+export interface FamilyWeeklyCertificationLookup {
   id: string;
-  record: WeeklyCertification;
+  record: FamilyWeeklyCertification;
 }
 
-/** The most recent QuarterCertification for this kid+quarter, if any exists at all (certified or stale). */
-export async function getCurrentQuarterCertification(
+/** The most recent FamilyQuarterCertification for this family+quarter, if any exists at all (certified or stale). */
+export async function getCurrentFamilyQuarterCertification(
   familyId: string,
-  kidKey: PlacementKidKey,
   quarter: Quarter
-): Promise<QuarterCertificationLookup | null> {
+): Promise<FamilyQuarterCertificationLookup | null> {
   const db = getFirestore();
   const snap = await db
-    .collection("quarterCertifications")
+    .collection("familyQuarterCertifications")
     .where("familyId", "==", familyId)
-    .where("kidKey", "==", kidKey)
     .where("quarter", "==", quarter)
     .orderBy("certifiedAt", "desc")
     .limit(1)
     .get();
   if (snap.empty) return null;
   const doc = snap.docs[0];
-  return { id: doc.id, record: doc.data() as QuarterCertification };
+  return { id: doc.id, record: doc.data() as FamilyQuarterCertification };
 }
 
-/** The most recent WeeklyCertification for this kid+quarter+week, if any exists at all. */
-export async function getCurrentWeeklyCertification(
+/** The most recent FamilyWeeklyCertification for this family+quarter+week, if any exists at all. */
+export async function getCurrentFamilyWeeklyCertification(
   familyId: string,
-  kidKey: PlacementKidKey,
   quarter: Quarter,
   week: number
-): Promise<WeeklyCertificationLookup | null> {
+): Promise<FamilyWeeklyCertificationLookup | null> {
   const db = getFirestore();
   const snap = await db
-    .collection("weeklyCertifications")
+    .collection("familyWeeklyCertifications")
     .where("familyId", "==", familyId)
-    .where("kidKey", "==", kidKey)
     .where("quarter", "==", quarter)
     .where("week", "==", week)
     .orderBy("certifiedAt", "desc")
@@ -64,53 +67,118 @@ export async function getCurrentWeeklyCertification(
     .get();
   if (snap.empty) return null;
   const doc = snap.docs[0];
-  return { id: doc.id, record: doc.data() as WeeklyCertification };
+  return { id: doc.id, record: doc.data() as FamilyWeeklyCertification };
 }
 
-export interface QuarterStatusResult {
-  status: QuarterOrWeekStatus;
-  currentHash: string | null; // null only when there's no content at all to hash
-  latest: QuarterCertificationLookup | null;
+interface FamilyPackageContent {
+  childContent: ChildContentReference[];
+  familyContentHash: string;
+  /** Whether ANY of the three kids has content at all — an all-null package is nothing to certify. */
+  anyContent: boolean;
 }
 
-/** Combines the current content's hash with the latest certification record to decide quarter status. */
-export async function getQuarterCertificationStatus(
+/** Every child's current quarter-shape hash, assembled into the family package — see contentHash.ts#hashFamilyPackage. */
+async function computeFamilyQuarterContent(familyId: string, quarter: Quarter): Promise<FamilyPackageContent> {
+  const childContent: ChildContentReference[] = await Promise.all(
+    PLACEMENT_KID_KEYS.map(async (kidKey) => {
+      const weeks = await loadAllWeekEntries(familyId, kidKey, quarter);
+      const contentHash = weeks && weeks.length > 0 ? hashQuarterShape(weeks) : null;
+      return { kidKey, contentHash };
+    })
+  );
+  return {
+    childContent,
+    familyContentHash: hashFamilyPackage(childContent),
+    anyContent: childContent.some((c) => c.contentHash !== null),
+  };
+}
+
+/** Every child's current week-content hash, assembled into the family package. */
+async function computeFamilyWeekContent(
   familyId: string,
-  kidKey: PlacementKidKey,
-  quarter: Quarter
-): Promise<QuarterStatusResult> {
-  const weeks = await loadAllWeekEntries(familyId, kidKey, quarter);
-  if (!weeks || weeks.length === 0) {
-    return { status: "neverCertified", currentHash: null, latest: null };
-  }
-  const currentHash = hashQuarterShape(weeks);
-  const latest = await getCurrentQuarterCertification(familyId, kidKey, quarter);
-  if (!latest) return { status: "neverCertified", currentHash, latest: null };
-  const status = latest.record.certifiedContentHash === currentHash ? "certified" : "stale";
-  return { status, currentHash, latest };
-}
-
-export interface WeekStatusResult {
-  status: WeekCertificationStatus;
-  hasContent: boolean;
-  currentHash: string | null;
-  latest: WeeklyCertificationLookup | null;
-}
-
-/** Combines the current week's content hash with the latest certification record to decide week status. */
-export async function getWeeklyCertificationStatus(
-  familyId: string,
-  kidKey: PlacementKidKey,
   quarter: Quarter,
   week: number
-): Promise<WeekStatusResult> {
-  const entry = await loadWeekEntry(familyId, kidKey, quarter, week);
-  if (!entry) {
-    return { status: "neverCertified", hasContent: false, currentHash: null, latest: null };
+): Promise<FamilyPackageContent> {
+  const childContent: ChildContentReference[] = await Promise.all(
+    PLACEMENT_KID_KEYS.map(async (kidKey) => {
+      const entry = await loadWeekEntry(familyId, kidKey, quarter, week);
+      const contentHash = entry ? hashWeekContent(entry) : null;
+      return { kidKey, contentHash };
+    })
+  );
+  return {
+    childContent,
+    familyContentHash: hashFamilyPackage(childContent),
+    anyContent: childContent.some((c) => c.contentHash !== null),
+  };
+}
+
+export interface FamilyQuarterStatusResult {
+  /** Has the family EVER certified this quarter (regardless of current staleness)? */
+  governed: boolean;
+  status: QuarterOrWeekStatus;
+  current: FamilyPackageContent;
+  /** Which kid(s)' shape changed since the latest certification — empty unless status is "stale". */
+  staleKidKeys: PlacementKidKey[];
+  latest: FamilyQuarterCertificationLookup | null;
+}
+
+/** Combines the family's current quarter package with the latest certification record. */
+export async function getFamilyQuarterCertificationStatus(
+  familyId: string,
+  quarter: Quarter
+): Promise<FamilyQuarterStatusResult> {
+  const current = await computeFamilyQuarterContent(familyId, quarter);
+  const latest = await getCurrentFamilyQuarterCertification(familyId, quarter);
+
+  if (!latest) {
+    return { governed: false, status: "neverCertified", current, staleKidKeys: [], latest: null };
   }
-  const currentHash = hashWeekContent(entry);
-  const latest = await getCurrentWeeklyCertification(familyId, kidKey, quarter, week);
-  if (!latest) return { status: "neverCertified", hasContent: true, currentHash, latest: null };
-  const status = latest.record.certifiedContentHash === currentHash ? "certified" : "stale";
-  return { status, hasContent: true, currentHash, latest };
+  const isCurrent = latest.record.familyContentHash === current.familyContentHash;
+  return {
+    governed: true,
+    status: isCurrent ? "certified" : "stale",
+    current,
+    staleKidKeys: isCurrent ? [] : diffStaleKidKeys(current.childContent, latest.record.childContent),
+    latest,
+  };
+}
+
+export interface FamilyWeekStatusResult {
+  /** Has the family EVER certified this week's QUARTER (regardless of the week's own status)? */
+  quarterGoverned: boolean;
+  status: QuarterOrWeekStatus;
+  current: FamilyPackageContent;
+  staleKidKeys: PlacementKidKey[];
+  latest: FamilyWeeklyCertificationLookup | null;
+}
+
+/**
+ * Combines the family's current week package with the latest certification
+ * record, plus whether the week's quarter is governed at all (the gate
+ * needs both — see certificationGate.ts).
+ */
+export async function getFamilyWeeklyCertificationStatus(
+  familyId: string,
+  quarter: Quarter,
+  week: number
+): Promise<FamilyWeekStatusResult> {
+  const [current, latest, quarterCert] = await Promise.all([
+    computeFamilyWeekContent(familyId, quarter, week),
+    getCurrentFamilyWeeklyCertification(familyId, quarter, week),
+    getCurrentFamilyQuarterCertification(familyId, quarter),
+  ]);
+  const quarterGoverned = quarterCert !== null;
+
+  if (!latest) {
+    return { quarterGoverned, status: "neverCertified", current, staleKidKeys: [], latest: null };
+  }
+  const isCurrent = latest.record.familyContentHash === current.familyContentHash;
+  return {
+    quarterGoverned,
+    status: isCurrent ? "certified" : "stale",
+    current,
+    staleKidKeys: isCurrent ? [] : diffStaleKidKeys(current.childContent, latest.record.childContent),
+    latest,
+  };
 }

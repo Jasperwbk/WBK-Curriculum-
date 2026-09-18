@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hashQuarterShape, hashWeekContent } from "./contentHash";
+import { diffStaleKidKeys, hashFamilyPackage, hashQuarterShape, hashWeekContent } from "./contentHash";
+import type { ChildContentReference } from "../types";
 
 test("hashWeekContent is deterministic for identical input", () => {
   const week = { title: "Harvest Math", rawContent: "## Week 1\n...", hours: { math: 4 } };
@@ -63,4 +64,105 @@ test("hashQuarterShape is independent of input array order", () => {
     { week: 1, title: "A" },
   ];
   assert.equal(hashQuarterShape(inOrder), hashQuarterShape(reversed));
+});
+
+// --- Family package hashing (build-order step 3.1) ---
+
+const FAMILY_PACKAGE_V1: ChildContentReference[] = [
+  { kidKey: "millaray", contentHash: "hash-millaray-v1" },
+  { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+  { kidKey: "maizley", contentHash: "hash-maizley-v1" },
+];
+
+test("hashFamilyPackage is deterministic for identical input", () => {
+  assert.equal(hashFamilyPackage(FAMILY_PACKAGE_V1), hashFamilyPackage([...FAMILY_PACKAGE_V1]));
+});
+
+test("hashFamilyPackage is independent of input array order (not tied to kid ordering)", () => {
+  const reversed = [...FAMILY_PACKAGE_V1].reverse();
+  assert.equal(hashFamilyPackage(FAMILY_PACKAGE_V1), hashFamilyPackage(reversed));
+});
+
+test("hashFamilyPackage changes when exactly one child's hash changes — one child's material change invalidates the whole family certification", () => {
+  const oneChildChanged: ChildContentReference[] = [
+    { kidKey: "millaray", contentHash: "hash-millaray-v2-EDITED" }, // only Millaray changed
+    { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+    { kidKey: "maizley", contentHash: "hash-maizley-v1" },
+  ];
+  assert.notEqual(hashFamilyPackage(FAMILY_PACKAGE_V1), hashFamilyPackage(oneChildChanged));
+});
+
+test("hashFamilyPackage distinguishes a child having no content (null) from having any real hash", () => {
+  const withoutMaizley: ChildContentReference[] = [
+    { kidKey: "millaray", contentHash: "hash-millaray-v1" },
+    { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+    { kidKey: "maizley", contentHash: null },
+  ];
+  assert.notEqual(hashFamilyPackage(FAMILY_PACKAGE_V1), hashFamilyPackage(withoutMaizley));
+});
+
+test("hashFamilyPackage: cosmetic-only changes upstream (already excluded by hashWeekContent/hashQuarterShape) never reach here, so unchanged per-kid hashes never change the family hash", () => {
+  // Simulates re-saving identical content under a different file name: the
+  // per-kid hashes upstream are unaffected (contentHash.ts already proved
+  // this for hashWeekContent/hashQuarterShape above), so the family hash
+  // built from those same unchanged hashes must also be unchanged.
+  const resavedSameContent: ChildContentReference[] = FAMILY_PACKAGE_V1.map((c) => ({ ...c }));
+  assert.equal(hashFamilyPackage(FAMILY_PACKAGE_V1), hashFamilyPackage(resavedSameContent));
+});
+
+// --- Stale-kid diffing (build-order step 3.1) ---
+
+test("diffStaleKidKeys returns empty when nothing changed", () => {
+  assert.deepEqual(diffStaleKidKeys(FAMILY_PACKAGE_V1, [...FAMILY_PACKAGE_V1]), []);
+});
+
+test("diffStaleKidKeys names exactly the one child whose hash changed", () => {
+  const current: ChildContentReference[] = [
+    { kidKey: "millaray", contentHash: "hash-millaray-v1" },
+    { kidKey: "makaio", contentHash: "hash-makaio-v2-EDITED" },
+    { kidKey: "maizley", contentHash: "hash-maizley-v1" },
+  ];
+  assert.deepEqual(diffStaleKidKeys(current, FAMILY_PACKAGE_V1), ["makaio"]);
+});
+
+test("diffStaleKidKeys names multiple children when multiple changed", () => {
+  const current: ChildContentReference[] = [
+    { kidKey: "millaray", contentHash: "CHANGED" },
+    { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+    { kidKey: "maizley", contentHash: "CHANGED" },
+  ];
+  const stale = diffStaleKidKeys(current, FAMILY_PACKAGE_V1).sort();
+  assert.deepEqual(stale, ["maizley", "millaray"]);
+});
+
+test("diffStaleKidKeys treats a child gaining content (null -> a real hash) as a change", () => {
+  const certifiedWithoutMaizley: ChildContentReference[] = [
+    { kidKey: "millaray", contentHash: "hash-millaray-v1" },
+    { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+    { kidKey: "maizley", contentHash: null },
+  ];
+  const currentWithMaizleyContent: ChildContentReference[] = [
+    { kidKey: "millaray", contentHash: "hash-millaray-v1" },
+    { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+    { kidKey: "maizley", contentHash: "hash-maizley-NEW" },
+  ];
+  assert.deepEqual(diffStaleKidKeys(currentWithMaizleyContent, certifiedWithoutMaizley), ["maizley"]);
+});
+
+test("bootstrap decision logic is idempotent: identical family content hashes to the same value twice in a row (skip), a real change never does (re-certify)", () => {
+  // bootstrapExistingCertifications' actual skip/certify decision is just
+  // "does the freshly computed family hash equal the latest certified
+  // one" — this is that same equality check in isolation, run twice to
+  // confirm it's stable (a second bootstrap pass over unchanged content
+  // is always a no-op).
+  const freshHash1 = hashFamilyPackage(FAMILY_PACKAGE_V1);
+  const freshHash2 = hashFamilyPackage(FAMILY_PACKAGE_V1);
+  assert.equal(freshHash1, freshHash2, "re-hashing identical content must be idempotent");
+
+  const changedHash = hashFamilyPackage([
+    { kidKey: "millaray", contentHash: "hash-millaray-v1" },
+    { kidKey: "makaio", contentHash: "hash-makaio-v1" },
+    { kidKey: "maizley", contentHash: "hash-maizley-CHANGED" },
+  ]);
+  assert.notEqual(freshHash1, changedHash, "a real content change must never be treated as a no-op");
 });
