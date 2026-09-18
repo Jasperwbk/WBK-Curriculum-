@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { getFirestore } from "firebase-admin/firestore";
 import type { CurriculumContentDoc, PlacementKidKey, Quarter } from "../types";
-import { getSchoolDayIndex } from "./colorSheetRotation";
+import { getSchoolDayIndex } from "./schoolCalendar";
 
 // Q1's original launch content, bundled into the deployed function (see
 // scripts/copy-curriculum-data.js) so it keeps working without anyone

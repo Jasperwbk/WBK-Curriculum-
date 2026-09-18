@@ -1,11 +1,16 @@
 import type { PlacementKidKey, Subject } from "../types";
+import { getSchoolDayIndex } from "./schoolCalendar";
 
 /**
- * Locked daily color-sheet assignment model — see
- * curriculum/10_daily_color_sheet_model.md. Each school day, each kid gets
- * exactly one featured subject (and a color sheet matching it); the three
- * kids never share a subject the same day. Deterministic so Claude never
- * has to "randomly" pick and risk a collision.
+ * RETIRED — no longer called from generatePlan or any other runtime path
+ * (as of the 2026-09-18 curriculum specification). The subject-matched
+ * color-sheet rotation described here and in
+ * curriculum/10_daily_color_sheet_model.md is explicitly superseded by
+ * Historical Figure Coloring (see curriculum/gap_analysis_2026-09-18.md
+ * §1 and functions/src/curriculum/historicalFigureSelector.ts). This file
+ * is kept, unused, so the exact prior behavior stays in git history and
+ * available for rollback — do not re-wire it into generatePlan without an
+ * explicit decision to reverse the supersession.
  */
 const RING: readonly Subject[] = [
   "math",
@@ -42,27 +47,6 @@ const MAIZLEY_SAFE_FALLBACKS: readonly Subject[] = [
 
 export type DailySubjectAssignments = Record<PlacementKidKey, Subject>;
 
-/**
- * School-day index within the quarter: 0 on the school year's start date
- * (assumed a school day), incrementing once per weekday thereafter.
- * Weekends never count, matching "Week 1 Monday = 0, then +1 each
- * instructional day" from the color-sheet model.
- */
-export function getSchoolDayIndex(schoolYearStart: Date, date: Date): number {
-  const start = stripTime(schoolYearStart);
-  const target = stripTime(date);
-  if (target < start) return 0;
-
-  let count = -1;
-  const cursor = new Date(start);
-  while (cursor <= target) {
-    const dayOfWeek = cursor.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return Math.max(count, 0);
-}
-
 /** Each kid's featured subject (and therefore color-sheet subject) for one school day. */
 export function getDailySubjectAssignments(
   schoolYearStart: Date,
@@ -81,8 +65,4 @@ export function getDailySubjectAssignments(
   }
 
   return { millaray, makaio, maizley };
-}
-
-function stripTime(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

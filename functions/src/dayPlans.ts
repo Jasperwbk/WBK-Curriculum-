@@ -5,20 +5,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireCaller, requireTeacher } from "./util/auth";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
-import { getDailySubjectAssignments } from "./curriculum/colorSheetRotation";
 import { getQuarterAndWeek, loadWeekContent } from "./curriculum/loadCurriculumContent";
 import { inferKidKey } from "./curriculum/placementTestItems";
-import type { Family, MasteryRecord, PlacementKidKey, Subject, UserProfile } from "./types";
+import type { Family, MasteryRecord, Subject, UserProfile } from "./types";
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
-
-// Art-ability band per curriculum/10_daily_color_sheet_model.md — used only
-// to tell Claude how much detail the day's color sheet should carry.
-const BAND_BY_KID: Record<PlacementKidKey, string> = {
-  millaray: "Band C (detailed scene, background allowed, ~15-20 min to color)",
-  makaio: "Band B (one clear scene, 4-8 objects, some interior detail)",
-  maizley: "Band A (2-4 giant objects, thick outlines, no background)",
-};
 
 interface GeneratePlanRequest {
   date: string; // ISO date the plan is for
@@ -36,9 +27,8 @@ interface GeneratedPlan {
 /**
  * Builds a per-student context block for the prompt: which objectives are
  * mastered vs. still in progress (per the 2-of-3 threshold in
- * learn_practice_test_alignment_standard_v2.md), the assessment baseline,
- * and today's featured subject + color sheet assignment (per
- * 10_daily_color_sheet_model.md). Falls back to a name-only line if the
+ * learn_practice_test_alignment_standard_v2.md) and the assessment
+ * baseline. Falls back to a name-only line if the
  * student can't be resolved (unknown id, non-family-member, etc.) — the
  * generator still works with less context rather than failing outright.
  */
@@ -110,13 +100,6 @@ async function buildStudentContext(
           `  --- end of curriculum content ---`
       );
     }
-
-    const assignments = getDailySubjectAssignments(schoolYearStart, planDate);
-    const featuredSubject = assignments[kidKey];
-    lines.push(
-      `  Today's featured print subject + color sheet: ${subjectLabel(featuredSubject)}, ` +
-        `drawn at ${BAND_BY_KID[kidKey]}. No other kid gets this subject as their color sheet today.`
-    );
   }
 
   return lines.join("\n");
@@ -156,13 +139,17 @@ function subjectsWhereEveryTrackedObjectiveIsAced(records: MasteryRecord[]): Sub
  *
  * When studentIds is supplied, the plan is mastery-aware: it pulls each
  * named student's per-objective mastery state and assessment baseline
- * (learn_practice_test_alignment_standard_v2.md) and today's deterministic
- * color-sheet subject assignment (10_daily_color_sheet_model.md) into the
- * prompt, so a regular school day actually follows the warm-up/new-teaching/
+ * (learn_practice_test_alignment_standard_v2.md) into the prompt, so a
+ * regular school day actually follows the warm-up/new-teaching/
  * interleaved-practice/retrieval-close-out shape and routes around whatever
  * each kid is still building. Without studentIds it still works, just with
  * less personalization — useful for a pure field-trip/fun day where none of
  * this applies anyway.
+ *
+ * Does not yet assign a Historical Figure Coloring pick (build-order step 8
+ * — see functions/src/curriculum/historicalFigureSelector.ts); the prior
+ * subject-ring color-sheet assignment that used to fill this role has been
+ * retired (curriculum/gap_analysis_2026-09-18.md §1).
  */
 export const generatePlan = onCall<GeneratePlanRequest>(
   { secrets: [anthropicApiKey] },
@@ -237,10 +224,7 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         "hand, favoring interactive/puzzle formats (maze, matching, word search, fill-in-the-scene) over a " +
         "bare problem list, plus a cursive handwriting component where it fits naturally. Digital/on-screen " +
         "content stays in a guidance role, like a teacher presenting, not where the actual work happens.\n" +
-        "4. If per-student context names a featured print subject + color sheet for a kid today, mention it " +
-        "as their printable color sheet for the day (a black-line-art drawing they color after their " +
-        "worksheet) — don't invent a different subject for it, and don't give two kids the same one.\n" +
-        "5. If per-student context flags an objective as being aced easily (no struggle at all), don't just " +
+        "4. If per-student context flags an objective as being aced easily (no struggle at all), don't just " +
         "repeat it or fold it into ordinary review — give a genuinely harder stretch version of that specific " +
         "skill today, so acing something too easily gets detected and probed further rather than just marked " +
         "done. If a whole subject is flagged as 'ready to exceed grade-level,' don't plateau at grade-level " +
