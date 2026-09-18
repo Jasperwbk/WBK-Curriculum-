@@ -62,12 +62,24 @@ deployed**:
 
   `bootstrapExistingCertifications` now creates family-level bootstrap
   records (still per-child hashes preserved inside); not executed against
-  production. 34 unit tests (up from 19). See the full report delivered
-  separately for the complete lifecycle, traceability model, and test
-  coverage. Still does not implement step 4 (two-day-ahead generation,
-  Jasper Morning Message, itinerary).
+  production. 34 unit tests (up from 19).
 
-Next up: step 4, only once you've reviewed step 3.1.
+- **Step 3.2 — done, awaiting your review.** Corrected the last gap in
+  3.1: "quarter never certified" was still being treated as "nothing to
+  enforce yet" regardless of governance state, so a brand-new Q2 would
+  silently generate ordinary plans without ever being certified. Replaced
+  with an explicit, family-level `curriculumGovernance` mode
+  (`"legacy"` | `"governed"`) that defaults to `"legacy"` whenever unset —
+  deploying this code can never by itself change a family's behavior.
+  `bootstrapExistingCertifications` is now also the sole, idempotent
+  legacy→governed activation trigger. Under `"governed"`, a quarter with
+  no certification (or a stale one) now blocks outright, before the gate
+  even looks at the week. 43 unit tests (up from 34). See the full report
+  delivered separately for the complete state machine and test coverage.
+  Still does not implement step 4 (two-day-ahead generation, Jasper
+  Morning Message, itinerary).
+
+Next up: step 4, only once you've reviewed step 3.2.
 
 ---
 
