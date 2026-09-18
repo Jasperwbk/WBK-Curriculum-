@@ -328,23 +328,32 @@ async function generateOrdinaryDayContent(params: {
       "the block right before it in that chain. Mark a block required:false only for genuine enrichment/" +
       "extension work, never for core instruction. State 1-3 short objective phrases per block in " +
       "objectiveDescriptions (plain skill descriptions, e.g. \"Convert oz to lb\" — not an id).\n" +
-      "8. The locked daily opening, in order, is: the Pledge (rule 1) -> morning PE/movement -> the rest of the " +
+      "8. The locked daily opening, in order, is: the Pledge (rule 1) -> required PE/movement -> the rest of the " +
       "academic day. Make the VERY FIRST entry in learningBlocks a \"physical_education\" block representing " +
       "this morning movement time — include one every single day, never fold it into the Jasper Morning Message " +
-      "or skip it. Vary the specific activity meaningfully day to day rather than repeating the same thing — " +
-      "draw from things like stretching/mobility, calisthenics, walking, running, balance/coordination, outdoor " +
-      "movement, games, skill practice, family movement, or age-appropriate bodyweight strength work. Give it " +
-      "real educational intent (a movement skill, coordination, balance, endurance, mobility, body awareness, a " +
-      "safe-exercise habit, or a teamwork/game skill) — never just \"go outside for 20 minutes\" with no stated " +
-      "purpose, and never an unsafe or max-effort exercise prescription. Match it to this specific student's " +
-      "age/stage as shown in their context below: a young child not yet at formal instructional objectives " +
-      "should get pure play/gross-motor movement with zero performance metrics or graded skill checks; an " +
-      "older child's may reasonably include a specific skill/coordination/endurance objective and a real " +
-      "assessmentEligible demonstration (teacher observation, not a quiz). Siblings may do the same family " +
-      "movement activity together in substance — describe it that way if it fits — each still gets their own " +
-      "independent block/record regardless. estimatedMinutes should be realistic for a morning movement block " +
-      "(typically 10-20 minutes), and any stage except warmup_retrieval fits it better than that one (it isn't " +
-      "retrieval of academic material).\n" +
+      "or skip it, and always set its required to true (PE is REQUIRED as part of the normal school day — this " +
+      "is a fixed program policy, never enrichment/optional, and never something to omit or downgrade just " +
+      "because it doesn't count toward instructional hours — see below). " +
+      "IMPORTANT PROGRAM POLICY: PE is required but explicitly NON-HOUR-BEARING for Missouri instructional/" +
+      "compliance calculations — it contributes zero official instructional hours by deliberate, permanent " +
+      "school policy, not an oversight. Never treat this as a reason to skip it, shrink it into an afterthought, " +
+      "or pad its estimatedMinutes to try to make it 'count' — it doesn't, by design, and that's fine. " +
+      "PE should emphasize regular physical movement, fitness, coordination, balance, sports and games, " +
+      "teamwork, outdoor activity, age-appropriate physical skills, healthy lifelong movement habits, and fun. " +
+      "Do NOT turn it into another academic class merely to justify its presence — it may have a simple " +
+      "movement/skill objective and a teacher observation, but it should generally feel active and enjoyable, " +
+      "not worksheet- or test-driven. Vary the specific activity meaningfully day to day rather than repeating " +
+      "the same thing — draw from things like stretching/mobility, calisthenics, walking, running, balance/" +
+      "coordination, outdoor movement, games, sports, skill practice, family movement, or age-appropriate " +
+      "bodyweight strength work — never just \"go outside for 20 minutes\" with no purpose at all, and never an " +
+      "unsafe or max-effort exercise prescription. Match it to this specific student's age/stage as shown in " +
+      "their context below: a young child not yet at formal instructional objectives should get pure play/" +
+      "gross-motor movement with zero performance metrics or graded skill checks; an older child's may " +
+      "reasonably include a simple skill/coordination/endurance objective and a teacher-observed demonstration " +
+      "(never a quiz). Siblings may do the same family movement activity together in substance — describe it " +
+      "that way if it fits — each still gets their own independent block/record regardless. estimatedMinutes " +
+      "should be realistic for a morning movement block (typically 10-20 minutes), and any stage except " +
+      "warmup_retrieval fits it better than that one (it isn't retrieval of academic material).\n" +
       alternativeNote +
       carryForwardNote +
       "\n\nRespond with ONLY a single JSON object, no prose, no markdown fences, matching exactly this shape: " +

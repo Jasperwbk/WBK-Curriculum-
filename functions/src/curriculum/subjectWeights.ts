@@ -13,6 +13,16 @@ import { Q1_FALL_WEEKLY_HOURS, type WeeklySubjectHours } from "./weeklyHours";
  * Falls back to an even split within a bucket only if that bucket has no
  * recorded hours at all (e.g. a newly-added subject with no curriculum
  * data yet) — real curriculum data always wins when it exists.
+ *
+ * `physical_education`'s weight always computes to exactly 0 here, and
+ * that is LOCKED PROGRAM POLICY (build-order step 7, Cory's decision),
+ * not the "no data yet" fallback case above — it has real, permanent
+ * curriculum data (weeklyHours.ts's weekHours() deliberately omits it),
+ * distinct from a genuinely-unweighted new subject. See weeklyHours.ts's
+ * doc comment for the full policy and evidenceHours.ts's
+ * NON_HOUR_BEARING_SUBJECTS for the actual hour-posting enforcement —
+ * this zero weight alone is not what keeps PE minutes out of official
+ * totals.
  */
 export function computeSubjectWeights(
   weeks: readonly WeeklySubjectHours[] = Q1_FALL_WEEKLY_HOURS

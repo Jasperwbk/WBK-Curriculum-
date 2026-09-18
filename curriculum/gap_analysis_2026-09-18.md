@@ -398,37 +398,60 @@ deployed**:
   Maizley's demonstration-based track) and already support "demonstrates
   balance sequence"-style PE evidence with no quiz required.
 
-  **Flagged for Cory/Sarah, not invented here (the step 7 instruction's
-  most important governance constraint):** the actual weekly-hour
-  allocation for PE. Inspection confirmed the existing 28 hrs/week Q1
-  figure (`curriculum/weeklyHours.ts`, sourced from
-  `q1_fall_curriculum_overview.md`'s own "Weekly hour budget") is a
-  deliberately-authored pacing number already exceeding Missouri's
-  required ~27.8 hrs/week pace by design — and that NO PE/movement content
-  is already implicitly folded into any of the other 8 subjects' real
-  curriculum files (bushcraft's outdoor content is survival/wayfinding
-  skills, not exercise). There is no honest time to reclassify without
-  either growing that authored weekly total or shrinking one of the other
-  8 subjects' authored hours — both real curriculum-content decisions.
-  `weekHours()` therefore deliberately assigns PE no hours yet; per
-  `computeSubjectWeights`'s existing, unchanged fallback behavior, this
-  gives PE's dashboard pace gauge an honest weight/target of 0 (not a
-  crash, not a guessed number, not an even-split default) until a real
-  figure is set. THE QUESTION FOR CORY/SARAH: how many hours/week should
-  PE be, and should it be additional (raising the 28-hr total) or
-  reallocated from an existing specialty subject (and if so, which, and
-  by how much)? One line in `weeklyHours.ts`'s `weekHours()` implements
-  whichever answer comes back — deliberately not touched until then.
+  **AUTHORITATIVE PE POLICY (Cory's decision, locking step 7 — no longer
+  an open question):** PE is REQUIRED as part of the normal WBK school
+  day, but is NON-HOUR-BEARING for Missouri instructional/compliance
+  calculations. The canonical requirement stays exactly 28 hrs/week for
+  Millaray/Makaio under the current Q1 model, unchanged; PE contributes 0
+  instructional/compliance hours — permanently, by deliberate policy, not
+  a placeholder. No hours are redistributed from another subject and the
+  28-hour total is never increased. "Required for the daily routine" and
+  "counts toward compliance hours" are explicitly independent dimensions
+  — a required block can, and here does, carry zero compliance weight.
 
-  11 new unit tests (225 -> 236): PE's objective-id abbreviation round-trips
-  like any other subject; `ensureMorningPhysicalEducationBlock` inserts,
-  renames/remaps, and no-ops correctly; `subjectWeights.test.ts` (new)
-  locks in PE's honest zero-weight behavior against the real bundled Q1
-  data. No Firestore rules/index changes — PE flows through every
-  existing subject-generic collection and query. Not deployed.
+  This is now enforced programmatically at three points, not left as a
+  weight=0 assumption anywhere: (1) `curriculum/evidenceHours.ts`'s new
+  `NON_HOUR_BEARING_SUBJECTS` set — `aggregateApprovedMinutesBySubject`
+  skips any `physical_education` block entirely, so it can never produce
+  an official `logs` entry via the approved-evidence pipeline, no matter
+  how much time was approved on the block; (2) `curriculum/
+  blockValidation.ts`'s `normalizeOneBlock` now force-sets
+  `required: true` for any `physical_education` block regardless of what
+  the AI supplies, so a zero compliance weight can never be read as
+  "optional"; (3) `weeklyHours.ts`'s `weekHours()` and its doc comments
+  (plus `types.ts`'s `SPECIALTY_SUBJECTS` and `subjectWeights.ts`'s doc
+  comments) now describe PE's absence/zero-weight as locked program
+  policy rather than a pending decision. The teacher-facing purpose
+  language in `proposedDays.ts`'s generation prompt was also rewritten to
+  match: fitness/coordination/balance/sports/games/teamwork/outdoor
+  activity/lifelong movement habits/fun, explicitly warned against turning
+  PE into another worksheet-driven academic block just to justify its
+  presence.
 
-Next up: step 8, once you've reviewed step 7 AND answered the PE
-weekly-hour question above.
+  Evidence/history are unaffected by the exclusion: a PE block's
+  `completionState`, `reportedMinutes`/`approvedMinutes`, and
+  `objectiveEvidence` (including teacher-observation/physical-
+  demonstration evidence, still no quiz required) are recorded and
+  preserved in the packet exactly like any other subject's — the
+  non-hour-bearing rule gates only the hours PROJECTION, never the
+  packet's own historical record of what happened or the mastery
+  pipeline's ability to use that evidence.
+
+  17 new unit tests since the prior report (225 -> 242): the original
+  step 7 batch (PE objective-id abbreviation,
+  `ensureMorningPhysicalEducationBlock` insert/rename/no-op behavior,
+  `subjectWeights.test.ts`'s honest-zero-weight checks) plus this
+  policy-lock batch — PE forced
+  `required: true` even against an AI-supplied `false`; the 28 hrs/week
+  total is unaffected and carries no `physical_education` entry;
+  `NON_HOUR_BEARING_SUBJECTS` membership; a fully-approved PE block posts
+  zero official hours; academic/specialty subjects keep posting normally
+  alongside a PE block in the same day; and a combined test proving the
+  exclusion never touches a PE block's own completion/minutes/evidence or
+  its ability to feed the mastery pipeline. No Firestore rules/index
+  changes. Not deployed.
+
+Next up: step 8, once you've reviewed this final step 7 state.
 
 ---
 

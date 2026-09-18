@@ -19,13 +19,13 @@ test("reading/language arts (5 hrs/week) outweighs the other 4-hr/week core subj
   assert.ok(weights.reading_language_arts > weights.social_studies_history);
 });
 
-test("physical_education (build-order step 7): honestly zero weight, not a guessed number, since Q1_FALL_WEEKLY_HOURS assigns it no hours yet", () => {
+test("physical_education (build-order step 7, locked as of Cory's policy decision): zero weight by deliberate, permanent policy — not a placeholder, not a guess, and not the 'no data yet' fallback", () => {
   const weights = computeSubjectWeights();
   assert.equal(weights.physical_education, 0);
   // Not the "no data at all" fallback (an even split) — the specialty
   // bucket DOES have real data (bushcraft/homestead/nature/spiritual), so
-  // PE's 0 is the real, honest "explicitly not weighted yet" outcome, not
-  // an accidental even-split default.
+  // PE's 0 is the real, intentional-policy outcome, not an accidental
+  // even-split default from a subject nobody has assigned hours to yet.
   assert.notEqual(weights.physical_education, 1 / SPECIALTY_SUBJECTS.length);
 });
 
@@ -47,4 +47,11 @@ test("a bucket with genuinely zero total hours still falls back to an even split
 test("computeSubjectWeights still sums the real bundled Q1 weekly hours correctly across all 9 weeks", () => {
   const weights = computeSubjectWeights(Q1_FALL_WEEKLY_HOURS);
   assert.ok(Math.abs(weights.math - 4 / 17) < 1e-9);
+});
+
+test("PE does not increase the canonical 28 hrs/week requirement — the one authored week's total is still exactly 28, with no physical_education entry at all", () => {
+  const week1 = Q1_FALL_WEEKLY_HOURS[0].hours;
+  const total = Object.values(week1).reduce((sum, hrs) => sum + (hrs ?? 0), 0);
+  assert.equal(total, 28);
+  assert.equal(week1.physical_education, undefined);
 });

@@ -86,6 +86,11 @@ test("missing/non-boolean required defaults to true (never silently downgrades c
   assert.equal(blocks[0].required, true);
 });
 
+test("physical_education is ALWAYS required, even if the AI explicitly supplies required:false — zero compliance weight (build-order step 7 policy) never makes it optional", () => {
+  const blocks = validateAndNormalizeBlocks(baseParams({ raw: [{ subject: "physical_education", required: false }] }));
+  assert.equal(blocks[0].required, true);
+});
+
 test("estimatedMinutes is clamped into [5, 120] and defaults to 20 when missing/invalid", () => {
   const [tooLow, tooHigh, missing, valid] = validateAndNormalizeBlocks(
     baseParams({

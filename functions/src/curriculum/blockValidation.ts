@@ -204,7 +204,11 @@ function normalizeOneBlock(
   const stage: InstructionalStage =
     typeof record.stage === "string" && VALID_STAGES.has(record.stage) ? (record.stage as InstructionalStage) : "teach_model";
   const estimatedMinutes = clampMinutes(record.estimatedMinutes);
-  const required = typeof record.required === "boolean" ? record.required : true;
+  // physical_education is ALWAYS required (build-order step 7, Cory's
+  // policy: "required for daily routine: YES" is independent of its
+  // non-hour-bearing status — never inferred from, or overridable by,
+  // anything else, including an AI-supplied required:false).
+  const required = subject === "physical_education" ? true : typeof record.required === "boolean" ? record.required : true;
   const activityFormat: ActivityFormat | undefined =
     typeof record.activityFormat === "string" && VALID_ACTIVITY_FORMATS.has(record.activityFormat)
       ? (record.activityFormat as ActivityFormat)

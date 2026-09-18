@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aggregateApprovedMinutesBySubject, hourLogDocId } from "./evidenceHours";
+import { aggregateApprovedMinutesBySubject, hourLogDocId, NON_HOUR_BEARING_SUBJECTS } from "./evidenceHours";
 import { selectMasteryEligibleItems } from "./evidenceMastery";
 import type { EvidenceBlockEntry, EvidencePacketDraft } from "../types";
 
@@ -95,6 +95,71 @@ test("compliance vs. mastery: a completed block with a weak/incorrect evidence o
   const masteryItems = selectMasteryEligibleItems(draft);
   assert.equal(masteryItems.length, 1);
   assert.equal(masteryItems[0].correct, false);
+});
+
+// --- PE non-hour-bearing policy (build-order step 7, Cory's decision) ---
+
+test("physical_education is in the locked NON_HOUR_BEARING_SUBJECTS set", () => {
+  assert.equal(NON_HOUR_BEARING_SUBJECTS.has("physical_education"), true);
+});
+
+test("a fully-approved physical_education block never posts official instructional minutes, no matter how much time was approved", () => {
+  const blocks = [block({ blockId: "b1", subject: "physical_education", approvedMinutes: 45, completionState: "completed" })];
+  assert.deepEqual(aggregateApprovedMinutesBySubject(blocks), {});
+});
+
+test("existing academic/specialty subjects keep posting hours normally even when a PE block is mixed into the same day", () => {
+  const blocks = [
+    block({ blockId: "b1", subject: "physical_education", approvedMinutes: 15 }),
+    block({ blockId: "b2", subject: "math", approvedMinutes: 40 }),
+    block({ blockId: "b3", subject: "bushcraft_outdoor_skills", approvedMinutes: 30 }),
+  ];
+  assert.deepEqual(aggregateApprovedMinutesBySubject(blocks), { math: 40, bushcraft_outdoor_skills: 30 });
+});
+
+test("PE's non-hour-bearing exclusion never touches its own recorded completion state, reported/approved minutes, or evidence — only whether it posts to official hours", () => {
+  const peBlock = block({
+    blockId: "b1",
+    subject: "physical_education",
+    title: "Balance beam practice",
+    completionState: "completed",
+    reportedMinutes: 15,
+    approvedMinutes: 15,
+    objectiveEvidence: [
+      {
+        objectiveId: "pe-obj-1",
+        demonstrationType: "physical_demonstration",
+        outcome: "observed_strong",
+        sourceType: "teacher_observation",
+        assessmentEligible: true,
+        recordedByUid: "teacher-1",
+        recordedAt: undefined as never,
+      },
+    ],
+  });
+  // No official hours posted for it...
+  assert.deepEqual(aggregateApprovedMinutesBySubject([peBlock]), {});
+  // ...but every bit of its own history is fully intact, exactly as
+  // recorded — "non-hour-bearing" only ever gates the `logs` projection,
+  // never the packet's own record of what actually happened.
+  assert.equal(peBlock.completionState, "completed");
+  assert.equal(peBlock.reportedMinutes, 15);
+  assert.equal(peBlock.approvedMinutes, 15);
+  assert.equal(peBlock.objectiveEvidence.length, 1);
+  // And that observation evidence is real, teacher-observation-based
+  // demonstration evidence — usable for mastery like any other subject's,
+  // no quiz involved, exactly as the policy requires.
+  const draft: EvidencePacketDraft = {
+    blocks: [peBlock],
+    dayAssessmentEligible: true,
+    revision: 0,
+    lastEditedByUid: "teacher-1",
+    lastEditedAt: undefined as never,
+  };
+  const masteryItems = selectMasteryEligibleItems(draft);
+  assert.equal(masteryItems.length, 1);
+  assert.equal(masteryItems[0].subject, "physical_education");
+  assert.equal(masteryItems[0].correct, true);
 });
 
 // --- hourLogDocId: hour-posting idempotency (build-order step 6.1) ---

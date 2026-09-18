@@ -47,10 +47,22 @@ export const SPECIALTY_SUBJECTS = [
    * unclassified activity. A specialty subject (not core): it isn't one
    * of Missouri's four core-hours subjects and was never part of the
    * 400-hour home-core requirement, exactly like bushcraft/homestead/
-   * nature/spiritual above. See curriculum/weeklyHours.ts's doc comment
-   * for why it deliberately has NO weekly-hour figure yet — that specific
-   * number is a real curriculum decision still pending from Cory/Sarah,
-   * not something invented here.
+   * nature/spiritual above.
+   *
+   * LOCKED POLICY (Cory's decision, finalizing step 7): PE is REQUIRED as
+   * part of the normal school day but NON-HOUR-BEARING for Missouri
+   * instructional/compliance calculations — it contributes zero
+   * official instructional hours, permanently, by deliberate school
+   * policy, not a placeholder pending a future number. See
+   * curriculum/weeklyHours.ts's doc comment (why it has no weekly-hour
+   * figure and never will) and curriculum/evidenceHours.ts's
+   * NON_HOUR_BEARING_SUBJECTS (the explicit programmatic enforcement —
+   * PE never posts an official `logs` entry, regardless of any
+   * approvedMinutes recorded on its block). "Required" and "hour-bearing"
+   * are deliberately independent: required-ness lives entirely in each
+   * block's own `required` field (server-forced true for
+   * physical_education in blockValidation.ts) and is never inferred from,
+   * or affected by, this subject's zero compliance weight.
    */
   "physical_education",
 ] as const;
