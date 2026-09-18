@@ -13,6 +13,36 @@ this document.
 
 ---
 
+## Status (updated 2026-09-18, after your go-ahead on steps 1–2)
+
+You confirmed the §1.1 decision (Historical Figure Coloring fully
+replaces the subject-ring rotation) and approved the revised 11-step
+build order below (§6). Completed so far, each its own small increment,
+built/tested/committed/pushed to `claude/new-session-h2hnan`, **not
+deployed**:
+
+- **Step 1 — done.** `colorSheetRotation.ts` retired from every runtime
+  path (kept in git history, deprecation header added, nothing deletes
+  it); `getDailySubjectAssignments` no longer called from `generatePlan`.
+  `getSchoolDayIndex` (unrelated generic day-index math, still needed by
+  `loadCurriculumContent.ts`) moved to its own `schoolCalendar.ts`.
+  `historicalFigureSelector.ts` added — the type contract only (person,
+  era, region, provenance, art-complexity band); no selection algorithm
+  yet, that's step 8.
+- **Step 2 — done.** `functions/src/approvals.ts`: `createProposal`/
+  `approveProposal`/`rejectProposal`, backed by new `proposals/{id}` and
+  `auditEvents/{id}` Firestore collections, per Builder Guide §21.
+  Additive only — the three existing ad hoc review flows (day-plan save,
+  extracurricular confirm, placement-submission review) are untouched and
+  keep working as before. Migrating them onto this primitive is separate,
+  later work, not bundled into step 2. First real consumer will be step 3
+  (quarter/weekly certification).
+
+Next up: step 3 (quarter + weekly certification objects), only once
+you've reviewed steps 1–2.
+
+---
+
 ## 0. Executive summary
 
 - The **compliance/pace skeleton and Q1 curriculum content** match the
@@ -33,7 +63,7 @@ this document.
 
 ---
 
-## 1. CONFLICT — needs your decision, nothing changed yet
+## 1. CONFLICT — RESOLVED 2026-09-18 (see Status above)
 
 ### 1.1 Daily color sheet: subject-ring rotation vs. Historical Figure Coloring
 
@@ -105,19 +135,22 @@ side effect.
 **Gap:** prompt-level rewording/expansion, not new infrastructure.
 
 ### 3.2 Teacher approval as a reusable primitive
-**Have:** two independent instances of proposal→review→commit already
-exist — day plans (`generatePlan` drafts, teacher edits/saves) and
-placement tests (`submitPlacementResponses` captures a kid's answers,
-teacher reviews open items, `submitPlacementTest` finalizes).
+**Have (updated 2026-09-18):** the shared primitive now exists —
+`functions/src/approvals.ts` (`createProposal`/`approveProposal`/
+`rejectProposal`) backed by `proposals/{id}` and `auditEvents/{id}`. Two
+independent ad hoc instances also still exist, unmigrated — day plans
+(`generatePlan` drafts, teacher edits/saves) and placement tests
+(`submitPlacementResponses` captures a kid's answers, teacher reviews open
+items, `submitPlacementTest` finalizes).
 **Spec wants** (Builder Guide §21): **one conceptual flow** — proposal →
 pending review → edit/approve/reject → committed version → audit event —
 reused for quarter plans, weekly certification, daily publication,
 curriculum corrections, learner-level adaptation, hour approval, and
 calendar changes.
-**Gap:** the pattern exists twice, independently, with no shared
-abstraction, no audit-event log, and isn't applied yet to quarters, weeks,
-curriculum corrections, or hour approval at all (those are §4 below —
-genuinely new, not just ungeneralized).
+**Remaining gap:** the two existing ad hoc flows aren't migrated onto the
+new primitive yet (deliberately deferred, not urgent — they work fine as
+is); it isn't applied yet to quarters, weeks, curriculum corrections, or
+hour approval at all (those are §4 below, and step 3+ of the build order).
 
 ### 3.3 Curriculum content storage/versioning
 **Have:** `curriculumContent/{familyId}_{kidKey}_{quarter}` Firestore docs,
@@ -248,32 +281,38 @@ existing `ROADMAP.md` entries:
 
 ---
 
-## 6. Proposed build order (for your review — not started)
+## 6. Build order (approved 2026-09-18, revised from the original proposal)
 
-Roughly in dependency order — each layer needs the one below it:
+Backbone-first: the school-day mechanics get built before secondary
+presentation features. Each step is its own small, testable increment —
+inspect affected code, smallest safe change, build/test, report back —
+not one bundled implementation. Deployment always needs separate,
+explicit approval regardless of local test results.
 
-1. **Resolve the §1.1 conflict** (your decision first — nothing else in
-   the color-sheet/daily-closing area should move until this is settled).
-2. **Generalize the approval primitive** (§3.2) — proposal → pending →
-   approve/reject → committed → audit event, as one reusable pattern.
-   Everything below leans on this existing rather than being built ad hoc
-   again.
-3. **Quarter + weekly certification objects** (§4) — the actual
-   authoritative-version model the spec's whole publication lifecycle
-   depends on; builds directly on #2.
-4. **Two-day-ahead generation + Jasper Morning Message + Strict/Flexible
-   itinerary** (§4) — extends `generatePlan` and `dayPlans` once
-   certification exists to generate against.
-5. **Block-level day-plan structure** (replacing the current single
-   `planText` blob) — needed before carry-forward, early-finish routing,
-   or end-of-day evidence packets can exist at all.
-6. **PE as a first-class subject** — relatively contained, but sequenced
-   after the certification model so it isn't migrated twice.
-7. **Historical Figure Coloring** (once #1 is resolved) and **Carousel
-   factoids** — presentation-layer additions, don't block anything above.
-8. **Ask-a-Teacher (Celeste/Jasper) + presentation identities** — biggest
-   standalone new subsystem; reasonable to sequence last since nothing
-   else structurally depends on it.
+1. ~~**Resolve Historical Figure Coloring conflict**~~ — **done.** Subject-
+   ring behavior retired; new historical-person selector contract
+   established (types only, no selection logic yet).
+2. ~~**Generalize the teacher-approval primitive**~~ — **done.**
+   `functions/src/approvals.ts` + `proposals`/`auditEvents` collections.
+3. **Quarter + weekly certification** — first real consumer of #2.
+4. **Two-day-ahead daily generation**, including Jasper Morning Message and
+   Strict/Flexible itinerary.
+5. **Day plans upgraded to block/objective-level structure**, including
+   carry-forward, dependencies, retrieval/remediation, and "Do Not Use for
+   Assessment."
+6. **End-of-day evidence + hour approval** — completed work flows back
+   through teacher verification before becoming authoritative.
+7. **PE as a first-class component** — carefully migrated into the
+   existing Q1 hour system without double-counting or breaking current
+   compliance math.
+8. **Historical Figure Coloring itself** — anti-repetition, contextual
+   weighting, historical breadth, age-appropriate art complexity,
+   preservation of completed work.
+9. **Ask-a-Teacher escalation + stable student/presentation identities** —
+   eliminating `inferKidKey()`-style name inference where practical.
+10. **Curriculum Quality Feedback Queue.**
+11. **Carousel factoids** — useful, but not required to make school
+    operational; last.
 
-This is a proposal for discussion, not a commitment — happy to reorder
-based on what you and Sarah actually want working first.
+Immediate green light was steps 1–2 (both done, this update). Steps 3+
+wait for your review of 1–2 before starting.
