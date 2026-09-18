@@ -20,7 +20,7 @@ function figure(overrides: Partial<HistoricalFigure> & Pick<HistoricalFigure, "i
     whyItMatters: "Why this person matters.",
     relevanceTags: [],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain", verificationStatus: "unverified" },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
     ...overrides,
   };

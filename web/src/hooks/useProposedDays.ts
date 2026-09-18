@@ -73,13 +73,16 @@ export interface LearningBlock {
   notes?: string;
 }
 
-/** Mirrors functions/src/types.ts's HistoricalFigureClosingPlan (build-order step 8). */
+export type ProvenanceVerificationStatus = "unverified" | "verified";
+
+/** Mirrors functions/src/types.ts's HistoricalFigureClosingPlan (build-order step 8, extended in 8.1). */
 export interface HistoricalFigureClosingPlan {
   figureId: string;
   selectionReason: string;
   artComplexityBand: string;
   showAndTellPrompt: string;
   recallQuestion: string;
+  sourceVerificationStatus: ProvenanceVerificationStatus;
 }
 
 export interface ProposedDayDraft {

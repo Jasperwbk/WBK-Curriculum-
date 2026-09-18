@@ -599,6 +599,9 @@ function HistoricalFigureClosingSummary({ closing }: { closing: HistoricalFigure
       <div style={{ color: "var(--text-secondary)" }}>Figure: {closing.figureId}</div>
       <div style={{ color: "var(--text-muted)" }}>{closing.selectionReason}</div>
       <div style={{ color: "var(--text-muted)" }}>Art complexity: {closing.artComplexityBand}</div>
+      <div style={{ color: closing.sourceVerificationStatus === "verified" ? "var(--text-muted)" : "var(--status-critical)" }}>
+        Source: {closing.sourceVerificationStatus === "verified" ? "verified" : "unverified — general historical knowledge, not yet traced to a specific source"}
+      </div>
       <div style={{ color: "var(--text-secondary)" }}>Show and tell: {closing.showAndTellPrompt}</div>
       <div style={{ color: "var(--text-secondary)" }}>Recall question: {closing.recallQuestion}</div>
     </div>

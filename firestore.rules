@@ -30,9 +30,16 @@ service cloud.firestore {
       return isOwner(data.userId) && isSameFamily(data.familyId);
     }
 
+    // build-order step 8.1: write narrowed from "any teacher in this family
+    // may write any field" to Cloud-Function-only, matching every other
+    // governed collection. The only client-side consumer of the old
+    // blanket write (EndOfDayClosingPage.tsx's closing-words editor) now
+    // goes through familySettings.ts#updateFamilyClosingWords, which only
+    // ever touches `closingWords` on the CALLER's own family — never any
+    // other field, never a client-supplied familyId.
     match /families/{familyId} {
       allow read: if isSameFamily(familyId);
-      allow write: if isTeacherInFamily(familyId);
+      allow write: if false;
     }
 
     match /users/{userId} {

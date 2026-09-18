@@ -28,3 +28,4 @@ export {
   reconcileEvidencePacket,
   recordHistoricalFigureRetention,
 } from "./evidencePackets";
+export { updateFamilyClosingWords } from "./familySettings";

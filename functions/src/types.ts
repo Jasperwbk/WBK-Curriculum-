@@ -720,6 +720,25 @@ export interface HistoricalFigureArtwork {
   allowedUseNotes?: string;
 }
 
+/**
+ * Whether a HistoricalFigure's biographical facts have actually been
+ * traced to a specific, checkable source — build-order step 8.1
+ * correction. Step 8's original catalog gave every entry
+ * `sourceTitle: "General historical record (public domain facts)"`,
+ * which is a real person's real facts but NOT a traceable source
+ * packet — an honest audit found that structurally claiming
+ * "provenance" while the content underneath is unverified general
+ * knowledge is exactly the "claims provenance without adequate source
+ * material" problem the instruction called out. A real person's
+ * identity being real does NOT make the content verified — those are
+ * two separate claims. `"unverified"` is therefore the correct default
+ * for a hand-authored catalog built from general knowledge rather than a
+ * cited source packet; `"verified"` is reserved for an entry that has
+ * actually been checked against a specific, named, checkable source
+ * (recorded in `sourceTitle`/`urlOrFileRef`/etc.), which no entry is yet.
+ */
+export type ProvenanceVerificationStatus = "unverified" | "verified";
+
 /** Source/rights discipline for the historical FACTS (name/era/bio) — never for artwork, see HistoricalFigureArtwork above. */
 export interface HistoricalFigureProvenance {
   sourceTitle: string;
@@ -728,6 +747,7 @@ export interface HistoricalFigureProvenance {
   retrievedOrVersionDate?: string;
   rightsStatus: string;
   allowedUseNotes?: string;
+  verificationStatus: ProvenanceVerificationStatus;
 }
 
 /**
@@ -753,7 +773,30 @@ export interface HistoricalFigure {
   whyItMatters: string;
   /** Curriculum tie-ins (subjects, week themes) used for upcoming-context selection weighting. */
   relevanceTags: string[];
-  /** False only for figures whose defining significance can't be simplified into a genuinely toddler-safe presentation (see historicalFigureSelector.ts's toddler filter) — presentation still adapts by age even when true; this only ever REMOVES a figure from Maizley's pool, never adds written-work complexity for her. */
+  /**
+   * Whether this figure is a safe pick for Maizley's AUTOMATIC selection
+   * pool (see historicalFigureSelector.ts's toddler filter) — this only
+   * ever REMOVES a figure from her pool, never adds written-work
+   * complexity for her when true (presentation still adapts by age
+   * regardless).
+   *
+   * CORRECTED SEMANTIC (build-order step 8.1 — the original doc comment
+   * conflated this with "did this person's adult story involve
+   * combat/war," which is neither necessary nor sufficient): this means
+   * "does an adequately simple, honest, non-graphic presentation of this
+   * person exist using the brief context already on this record" —
+   * NOT "did this person live a peaceful life." A figure whose defining
+   * act was violent can still be `true` if an honest, simple ALTERNATE
+   * framing exists for them (e.g. George Washington: "became the first
+   * president" stands on its own without discussing the war at all).
+   * Conversely, a figure with no combat in their story at all could in
+   * principle be `false` if their only real significance requires a
+   * concept too abstract or nuanced to introduce honestly at 2.5 — this
+   * catalog doesn't currently have such a case, but the field is defined
+   * to allow for one rather than assuming "no violence = automatically
+   * fine." See historicalFigureCatalog.ts's per-entry comments for the
+   * actual reasoning behind each `false`.
+   */
   toddlerAppropriate: boolean;
   provenance: HistoricalFigureProvenance;
   artwork: HistoricalFigureArtwork;
@@ -782,6 +825,14 @@ export interface HistoricalFigureClosingPlan {
   /** Deterministic, template-based, age-differentiated — see historicalFigureSelector.ts. Examples only, not required hardcoded wording. */
   showAndTellPrompt: string;
   recallQuestion: string;
+  /**
+   * Copied from the selected HistoricalFigure's provenance at selection
+   * time (build-order step 8.1) so the teacher review UI can show it
+   * without the web app needing access to the backend catalog — never
+   * silently "verified" just because the person is real; see
+   * types.ts's ProvenanceVerificationStatus doc comment.
+   */
+  sourceVerificationStatus: ProvenanceVerificationStatus;
 }
 
 /**

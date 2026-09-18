@@ -497,6 +497,10 @@ function buildHistoricalFigureClosing(params: {
     artComplexityBand: ART_COMPLEXITY_BAND_BY_KID[kidKey],
     showAndTellPrompt: buildShowAndTellPrompt(selection.figure, kidKey),
     recallQuestion: buildRecallQuestion(selection.figure, kidKey),
+    // Copied so the teacher review UI can show it without needing access
+    // to the backend catalog (build-order step 8.1) — never silently
+    // "verified" just because the person is real.
+    sourceVerificationStatus: selection.figure.provenance.verificationStatus,
   };
 }
 

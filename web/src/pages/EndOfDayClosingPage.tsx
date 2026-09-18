@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { db, functions } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
@@ -82,6 +82,11 @@ const recordHistoricalFigureRetentionFn = httpsCallable<
   { packetId: string; retentionObservation: number; teacherNote?: string },
   { packetId: string }
 >(functions, "recordHistoricalFigureRetention");
+
+const updateFamilyClosingWordsFn = httpsCallable<{ closingWords: string }, { closingWords: string }>(
+  functions,
+  "updateFamilyClosingWords"
+);
 
 /** The fields a teacher actually edits for one evidence item — recordedByUid/recordedAt are always server-set (evidenceValidation.ts ignores whatever the client sends for them), so the local editing state never needs to fabricate them. */
 type EvidenceDraftItem = Omit<ObjectiveEvidenceItem, "recordedByUid" | "recordedAt">;
@@ -796,10 +801,16 @@ export function EndOfDayClosingPage() {
  * the family's own Kindred motto/prayer/closing words. Deliberately
  * NEVER given a default or AI-generated placeholder (the exact wording
  * was never supplied and must not be invented — see types.ts's
- * Family.closingWords doc comment); this is the "configurable/family-
- * authored closing element" the spec calls for, a plain direct write to
- * the family's own doc using the same teacher-write permission every
- * other family setting already has.
+ * Family.closingWords doc comment).
+ *
+ * Reads the family doc directly (still allowed — `families/{familyId}`
+ * stays client-readable), but SAVES via the dedicated
+ * updateFamilyClosingWordsFn callable rather than a direct client write
+ * (build-order step 8.1 correction): the family doc's write rule is now
+ * `allow write: if false`, matching every other Cloud-Function-only
+ * collection, and this callable only ever touches `closingWords` on the
+ * caller's own family — never any other Family field, never a
+ * client-supplied familyId.
  */
 function FamilyClosingWordsEditor({ familyId }: { familyId: string }) {
   const [closingWords, setClosingWords] = useState<string | undefined>(undefined);
@@ -818,7 +829,7 @@ function FamilyClosingWordsEditor({ familyId }: { familyId: string }) {
   async function save() {
     setSaving(true);
     try {
-      await updateDoc(doc(db, "families", familyId), { closingWords: draft.trim() });
+      await updateFamilyClosingWordsFn({ closingWords: draft.trim() });
       setEditingWords(false);
     } finally {
       setSaving(false);

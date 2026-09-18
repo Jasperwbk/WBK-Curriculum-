@@ -572,7 +572,88 @@ deployed**:
   referenced. `isValidRetentionObservation`'s full boundary set. No
   Firestore rules/index changes. Not deployed.
 
-Next up: step 9, once you've reviewed step 8.
+- **Step 8.1 — done, awaiting your review.** Narrowly-scoped audit/
+  correction of step 8's Historical Figure Coloring catalog and the new
+  FamilyClosingWordsEditor's write path.
+
+  Historical accuracy: Leif Erikson's entry originally said he "reached
+  North America," dangerously ambiguous next to every U.S.-based entry's
+  wording — corrected to name the actual, securely documented site,
+  L'Anse aux Meadows in present-day Newfoundland and Labrador, CANADA,
+  never the modern United States. Columbus's entry already correctly said
+  "islands in the Caribbean" (no factual fix needed) but carried a
+  "colonial" relevance tag that conflates his 1492 voyage with the actual
+  English colonial period a century later — removed. Both entries'
+  `whyItMatters` now explicitly states they never reached the modern
+  U.S. while still explaining their real relevance to American-history
+  study (the later chain of exploration/colonization the future U.S. is
+  part of) — historical relevance kept distinct from geographic presence,
+  per the audit's core distinction.
+
+  Provenance honesty: every one of the 20 catalog entries previously
+  claimed `sourceTitle: "General historical record (public domain
+  facts)"` as though that label were itself a traceable source — an
+  honest audit found this was a placeholder, not a citation, and that a
+  person being real never proves their catalog entry has been verified.
+  `HistoricalFigureProvenance` gained a required `verificationStatus:
+  "unverified" | "verified"` field; all 20 entries are now honestly
+  `"unverified"` (no web-research project was run to backfill real
+  citations — out of scope for a focused correction — the honest fix is
+  to say so). `HistoricalFigureClosingPlan` gained
+  `sourceVerificationStatus`, copied from the selected figure at
+  selection time, now visible in `ProposedDaysPage.tsx`'s teacher review
+  summary rather than staying buried in backend-only data.
+
+  Tag semantics: added an explicit doc comment on
+  `Q1_FALL_WEEK_RELEVANCE_TAGS` distinguishing historical-relevance/theme
+  tags from geographic-presence claims — no tag in the catalog implies
+  U.S. territorial presence unless the person was actually there;
+  geography claims belong only in `region`/`briefBio`/`whyItMatters`
+  prose, stated explicitly, never inferred from a tag.
+
+  `toddlerAppropriate` semantics: the field's doc comment (types.ts) was
+  rewritten from "did their story involve combat" to the corrected
+  meaning — "does an adequately simple, honest presentation exist using
+  this record's brief context," independent of whether the adult story
+  involved conflict. Re-auditing the catalog under the corrected test
+  didn't change any boolean (George Washington: `true`, because "became
+  the first president" is an honest simple alternate framing that needs
+  no war discussion at all; Deborah Sampson: still `false`, because her
+  *entire* recorded significance IS the disguise-to-enlist act with no
+  alternate framing available) — but Sampson's inline comment was
+  rewritten to reflect the real reasoning ("no adequate alternate
+  framing exists"), not "combat is present."
+
+  FamilyClosingWordsEditor governance: audited the direct client
+  `updateDoc` this feature used against `families/{familyId}`. Teacher-
+  only access was already correctly enforced (firestore.rules'
+  `isTeacherInFamily` checks role, not just family — a student was never
+  able to write it), but the write still exercised the family doc's
+  blanket, field-unrestricted `allow write` rule. Fixed by narrowing:
+  `firestore.rules`' `families/{familyId}` write is now `allow write: if
+  false` (matching every other Cloud-Function-only collection), and a
+  new dedicated callable, `familySettings.ts#updateFamilyClosingWords`
+  (teacher-only via `requireTeacher`, no `familyId` parameter at all —
+  always the caller's own family), is now the only way any Family field
+  is written from client code. Its Firestore payload is built by a pure
+  `buildClosingWordsUpdate` function whose return TYPE is the literal
+  `{ closingWords: string }` — a compile-time guarantee, not just a
+  runtime habit, that no other Family field can ever be smuggled through
+  it. No wording was invented anywhere in this fix.
+
+  21 new unit tests (278 -> 299): Columbus/Leif Erikson geographic-wording
+  regression tests, historical-relevance-vs-geography tag tests,
+  provenance-verification-state tests, a toddlerAppropriate-semantics
+  test, `sanitizeClosingWords`/`buildClosingWordsUpdate` tests (including
+  one proving the update payload can never carry a second key), and a
+  first-ever `util/auth.test.ts` covering `requireTeacher`/
+  `requireSameFamily`/`requireOwnerOrTeacher` directly — the actual
+  mechanism behind "a student cannot modify family closing words," now
+  genuinely tested rather than only structurally true. One rules change
+  (`families/{familyId}` write narrowed to Cloud-Function-only); no new
+  indexes. Not deployed.
+
+Next up: step 9, once you've reviewed step 8.1.
 
 ---
 

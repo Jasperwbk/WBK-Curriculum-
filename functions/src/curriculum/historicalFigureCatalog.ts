@@ -10,6 +10,32 @@ import type { HistoricalFigure } from "../types";
  * ALL entries because historical facts themselves are never copyrightable
  * — this is deliberately NOT a claim about any particular book/article.
  *
+ * PROVENANCE HONESTY (build-order step 8.1 correction): every entry's
+ * `provenance.verificationStatus` is "unverified". Step 8's original text
+ * ("General historical record (public domain facts)") described these as
+ * though the label itself were a real, traceable source — an audit
+ * correctly identified this as a placeholder, not a citable source
+ * packet: a person being real and their facts being broadly documented
+ * does NOT mean this specific catalog entry has been checked against a
+ * specific, named source. No web-research project was run to backfill
+ * real citations here (out of scope for a focused correction step); the
+ * honest fix is to say so, not to invent one. `verificationStatus:
+ * "verified"` is reserved for an entry that has actually been checked
+ * against a specific source recorded in `sourceTitle`/`urlOrFileRef`,
+ * which is real future work, not a claim this catalog makes today.
+ *
+ * GEOGRAPHIC ACCURACY (build-order step 8.1 correction): step 8's Leif
+ * Erikson entry said he "reached North America," which is technically
+ * true but dangerously ambiguous next to every other entry's
+ * "United States" wording — the actual, securely documented Norse site
+ * is L'Anse aux Meadows, in present-day Newfoundland and Labrador,
+ * CANADA, never the modern United States. Corrected below. Columbus's
+ * entry already correctly said "islands in the Caribbean" (never
+ * claiming the continental U.S.) and needed no factual correction, but
+ * its "colonial" relevance tag was removed — see Q1_FALL_WEEK_RELEVANCE_TAGS'
+ * doc comment for why that tag is reserved for the actual English
+ * colonial period (1607+), a full century after Columbus.
+ *
  * `artwork` is "unavailable"/"unknown_unverified" for every entry — no
  * generative-image pipeline exists, and internet artwork is never
  * scraped or assumed reusable (build-order step 8, requirements 6-7).
@@ -45,7 +71,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
       "He taught the colonists to plant corn and fish local waters, and helped translate between colonists and neighboring nations — his help is part of why Plymouth Colony survived at all.",
     relevanceTags: ["indigenous", "colonial", "harvest", "agriculture"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -58,7 +89,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Her life shows both real contact and real conflict between Indigenous nations and early English colonists.",
     relevanceTags: ["indigenous", "colonial", "exploration"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -71,7 +107,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Thanks to his invention, the Cherokee Nation quickly became widely literate in their own written language.",
     relevanceTags: ["indigenous", "invention", "reading_language_arts", "writing"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -84,7 +125,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Her knowledge of the land and languages was essential to the expedition's success in reaching the Pacific.",
     relevanceTags: ["indigenous", "exploration", "expansion", "tracking", "animals", "outdoors"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -97,7 +143,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "He invented useful things (like bifocal glasses and the lightning rod) and helped found the United States.",
     relevanceTags: ["colonial", "revolutionary", "invention", "science", "weather"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -110,7 +161,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Her published poems made her one of the best-known writers in the colonies at the time.",
     relevanceTags: ["colonial", "reading_language_arts", "literature"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -123,7 +179,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "His famous ride helped colonial fighters prepare for the battles that started the Revolutionary War.",
     relevanceTags: ["revolutionary", "colonial"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -135,11 +196,24 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
       "Deborah Sampson disguised herself as a man to enlist and fight as a soldier in the Continental Army during the Revolutionary War.",
     whyItMatters: "She's one of the earliest known American women to serve in combat.",
     relevanceTags: ["revolutionary"],
-    // Her entire significance is tied to disguising herself to serve in
-    // combat — hard to present in a genuinely toddler-safe way without
-    // either distorting the story or introducing war/combat framing.
+    // toddlerAppropriate: false — NOT because her story involves combat
+    // (see types.ts's corrected doc comment: combat alone never disqualifies
+    // a figure). The actual reason: unlike, say, George Washington (who has
+    // an honest, simple, non-military alternate framing — "became the
+    // first president"), Sampson has NO adequately simple alternate
+    // framing available — her entire recorded significance IS the
+    // disguise-to-enlist act itself, which requires explaining gender
+    // disguise and military enlistment together to make any sense at all.
+    // There's no honest way to simplify that into a 2.5-year-old's
+    // point-and-name interaction without either omitting the one thing
+    // that makes her notable or presenting a concept she can't grasp.
     toddlerAppropriate: false,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -152,7 +226,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "He helped win American independence and set an example for how presidents should lead.",
     relevanceTags: ["revolutionary", "early_us", "history"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -165,7 +244,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "French support he helped arrange, including soldiers and ships, was a big part of why the colonies won independence.",
     relevanceTags: ["revolutionary", "exploration"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -178,7 +262,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "His writing shaped the country's founding ideas, and his land purchase opened the way west.",
     relevanceTags: ["early_us", "expansion", "history"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -191,7 +280,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Her quick thinking preserved an important piece of the young country's history.",
     relevanceTags: ["early_us", "history"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -204,7 +298,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "His orchards fed and supplied settlers moving west, and his gentle, wandering life became a lasting American story.",
     relevanceTags: ["expansion", "agriculture", "plants", "seeds", "pioneer", "science"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -217,7 +316,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "His leadership helped hold the country together and moved the nation toward ending slavery.",
     relevanceTags: ["civil_war", "history", "reflection"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -230,7 +334,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Her courage helped many people reach freedom, and she later helped the Union Army during the Civil War.",
     relevanceTags: ["civil_war", "history"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -243,7 +352,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "His speeches and writing changed many people's minds and helped the fight to end slavery.",
     relevanceTags: ["civil_war", "reading_language_arts", "history"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -256,7 +370,12 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "His inventions changed how homes, businesses, and daily life worked.",
     relevanceTags: ["industrial", "invention", "technology"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
@@ -269,33 +388,50 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
     whyItMatters: "Their flight opened the door to modern air travel.",
     relevanceTags: ["industrial", "invention", "technology"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
     id: "hf-leif-erikson",
     name: "Leif Erikson",
     era: "Around 1000 AD",
-    region: "Norse (Iceland/Greenland) — reached North America",
+    region: "Norse (Iceland/Greenland) — landed in present-day Newfoundland and Labrador, Canada, not the modern United States",
     briefBio:
-      "Leif Erikson was a Norse explorer, son of Erik the Red, who sailed from Greenland and is believed to have reached North America centuries before Columbus.",
-    whyItMatters: "His voyage was likely the first time Europeans set foot in North America.",
+      "Leif Erikson was a Norse explorer, son of Erik the Red, who sailed from Greenland and established a short-lived settlement at what is now L'Anse aux Meadows, in present-day Newfoundland and Labrador, Canada — centuries before Columbus's voyages.",
+    whyItMatters:
+      "His voyage is the earliest securely documented European landing in North America — a real, physical settlement site archaeologists have found, not just a legend. It never reached the modern United States, but it's part of the wider story of how Europeans came to know about the Americas, a story the future United States is later part of.",
     relevanceTags: ["exploration", "norse", "heritage", "reflection"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
   {
     id: "hf-columbus",
     name: "Christopher Columbus",
     era: "Late 1400s",
-    region: "Genoa/Spain — voyages to the Americas",
+    region: "Genoa/Spain — voyages reaching the Caribbean and, on later trips, the coasts of Central and South America; never the mainland of the present-day United States",
     briefBio:
-      "Christopher Columbus sailed across the Atlantic Ocean in 1492 hoping to reach Asia, and instead reached islands in the Caribbean.",
-    whyItMatters: "His voyages began sustained contact between Europe and the Americas, with consequences — good and very harmful — that shaped centuries of history.",
-    relevanceTags: ["exploration", "colonial"],
+      "Christopher Columbus sailed across the Atlantic Ocean in 1492 hoping to reach Asia, and instead reached islands in the Caribbean; later voyages reached parts of the coasts of what are now Central and South America.",
+    whyItMatters:
+      "His voyages started sustained contact between Europe and the Americas, with consequences — good and very harmful — that shaped centuries of history. He never set foot in what's now the United States, but the chain of European exploration and colonization his voyages set off is part of how that later history came to be.",
+    relevanceTags: ["exploration"],
     toddlerAppropriate: true,
-    provenance: { sourceTitle: "General historical record (public domain facts)", rightsStatus: "public_domain" },
+    provenance: {
+      sourceTitle: "General historical/encyclopedic knowledge — not yet traced to a specific citable source",
+      rightsStatus: "public_domain",
+      verificationStatus: "unverified",
+      allowedUseNotes: "Safe for general child-facing educational use; verify against a specific named source before treating as authoritative.",
+    },
     artwork: { status: "unavailable", rightsStatus: "unknown_unverified" },
   },
 ] as const;
@@ -309,6 +445,24 @@ export const HISTORICAL_FIGURE_CATALOG: readonly HistoricalFigure[] = [
  * selection-weight bonus in historicalFigureSelector.ts — never a hard
  * filter, so broad variety is always still possible even during a
  * heavily-themed week.
+ *
+ * TAG SEMANTICS (build-order step 8.1 correction): every tag here is a
+ * HISTORICAL-RELEVANCE/THEME signal, never a claim of geographic presence
+ * in the modern United States. In particular, `"colonial"` means "the
+ * actual English colonial period in what's now the U.S. (1607 onward)" —
+ * it does NOT mean "old" or "pre-1776" in general, which is why
+ * Christopher Columbus (1492, a full century earlier, and never in
+ * English colonial territory at all) does not carry it in
+ * historicalFigureCatalog.ts, even though he's tagged "exploration" and
+ * genuinely relevant to American-history study. A figure can be highly
+ * relevant to that study — Columbus, Leif Erikson — without this table
+ * or the catalog ever implying they set foot in the present-day U.S.;
+ * `"norse"`/`"heritage"`/`"exploration"`/`"reflection"` (week 9) are
+ * historical/thematic connections, not geography claims. Downstream
+ * consumers (a future AI-context step, if one is ever added) must not
+ * infer U.S. presence from tag membership alone — geography claims
+ * belong in `HistoricalFigure.region`/`briefBio`/`whyItMatters` text,
+ * stated explicitly, never inferred from a tag.
  */
 export const Q1_FALL_WEEK_RELEVANCE_TAGS: Readonly<Record<number, readonly string[]>> = {
   1: ["harvest", "math"],
