@@ -48,6 +48,8 @@ export interface Family {
   memberIds: string[]; // all teacher + student accounts in the family
   /** Optional — see WeeklyCertificationSchedule. Undefined means use the default. */
   weeklyCertificationSchedule?: WeeklyCertificationSchedule;
+  /** Optional — see CurriculumGovernanceState. Undefined means "legacy" (pre-governance compatibility). */
+  curriculumGovernance?: CurriculumGovernanceState;
 }
 
 export interface UserProfile {
@@ -390,6 +392,36 @@ export interface DayDesignation {
   description: string;
   createdByUid: string;
   createdAt: Timestamp;
+}
+
+// --- Curriculum governance mode (build-order step 3.2) ---
+//
+// The certification gate's top-level switch — an EXPLICIT, family-level
+// state, never inferred from whether any particular quarter happens to
+// have a certification record. Two modes:
+//
+// "legacy"   — pre-governance compatibility. Existing behavior continues:
+//              generatePlan grounds on content when it exists, nothing
+//              blocks. This is the default whenever a family hasn't set
+//              curriculumGovernance at all (Family.curriculumGovernance
+//              undefined), so deploying this architecture never silently
+//              flips a family into enforcement — see
+//              getCurriculumGovernanceMode in curriculumGovernance.ts.
+// "governed" — the full certification chain is enforced for EVERY quarter,
+//              including one that's never been certified at all (a brand
+//              new Q2, say) — "never certified" now blocks rather than
+//              being treated as "nothing to enforce yet." Activated as a
+//              deliberate side effect of a teacher running
+//              bootstrapExistingCertifications (functions/src/
+//              certification.ts) — never automatically, never merely
+//              because code was deployed.
+export type CurriculumGovernanceMode = "legacy" | "governed";
+
+export interface CurriculumGovernanceState {
+  mode: CurriculumGovernanceMode;
+  /** Set only once, the moment mode first became "governed". */
+  activatedByUid?: string;
+  activatedAt?: Timestamp;
 }
 
 /**

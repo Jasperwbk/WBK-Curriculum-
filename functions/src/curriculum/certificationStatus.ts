@@ -145,8 +145,6 @@ export async function getFamilyQuarterCertificationStatus(
 }
 
 export interface FamilyWeekStatusResult {
-  /** Has the family EVER certified this week's QUARTER (regardless of the week's own status)? */
-  quarterGoverned: boolean;
   status: QuarterOrWeekStatus;
   current: FamilyPackageContent;
   staleKidKeys: PlacementKidKey[];
@@ -155,27 +153,29 @@ export interface FamilyWeekStatusResult {
 
 /**
  * Combines the family's current week package with the latest certification
- * record, plus whether the week's quarter is governed at all (the gate
- * needs both — see certificationGate.ts).
+ * record. Whether the week's QUARTER is itself governed/certified is a
+ * separate concern the gate checks first via
+ * getFamilyQuarterCertificationStatus (build-order step 3.2 — the gate's
+ * top-level switch is the family's explicit governanceMode, not a
+ * per-quarter "does a cert record exist" inference) — callers that need
+ * both fetch both, rather than this function doing an extra quarter-level
+ * lookup just to bundle a boolean in here as step 3.1 did.
  */
 export async function getFamilyWeeklyCertificationStatus(
   familyId: string,
   quarter: Quarter,
   week: number
 ): Promise<FamilyWeekStatusResult> {
-  const [current, latest, quarterCert] = await Promise.all([
+  const [current, latest] = await Promise.all([
     computeFamilyWeekContent(familyId, quarter, week),
     getCurrentFamilyWeeklyCertification(familyId, quarter, week),
-    getCurrentFamilyQuarterCertification(familyId, quarter),
   ]);
-  const quarterGoverned = quarterCert !== null;
 
   if (!latest) {
-    return { quarterGoverned, status: "neverCertified", current, staleKidKeys: [], latest: null };
+    return { status: "neverCertified", current, staleKidKeys: [], latest: null };
   }
   const isCurrent = latest.record.familyContentHash === current.familyContentHash;
   return {
-    quarterGoverned,
     status: isCurrent ? "certified" : "stale",
     current,
     staleKidKeys: isCurrent ? [] : diffStaleKidKeys(current.childContent, latest.record.childContent),

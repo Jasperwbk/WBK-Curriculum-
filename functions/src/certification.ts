@@ -7,10 +7,12 @@ import {
   getFamilyQuarterCertificationStatus,
   getFamilyWeeklyCertificationStatus,
 } from "./curriculum/certificationStatus";
+import { getCurriculumGovernanceMode, shouldActivateGovernance } from "./curriculum/curriculumGovernance";
 import type {
   CertificationSource,
   ChildContentReference,
   DayDesignationType,
+  Family,
   FamilyQuarterCertification,
   FamilyWeeklyCertification,
   DayDesignation,
@@ -221,6 +223,8 @@ interface BootstrapResult {
   quartersCertified: Quarter[];
   weeksCertified: { quarter: Quarter; week: number }[];
   alreadyCurrent: { quarter: Quarter; week?: number }[];
+  /** Whether THIS call was the one that flipped the family from "legacy" to "governed" — false if it was already governed. */
+  governanceActivated: boolean;
 }
 
 const WEEKS_PER_QUARTER = 9;
@@ -239,6 +243,12 @@ const WEEKS_PER_QUARTER = 9;
  * anything else. Must be explicitly called by a signed-in teacher — no
  * certification here is fabricated without a real uid/timestamp/audit
  * trail behind it. Not executed against production from this environment.
+ *
+ * Build-order step 3.2: calling this is also the ONLY way a family moves
+ * from "legacy" to "governed" curriculum-governance mode (see
+ * curriculumGovernance.ts) — deploying this code never does that by
+ * itself, and this update is idempotent (a family already "governed"
+ * stays exactly as it was, activatedByUid/activatedAt untouched).
  */
 export const bootstrapExistingCertifications = onCall<BootstrapCertificationsRequest>(async (request) => {
   const caller = await requireCaller(request);
@@ -250,7 +260,12 @@ export const bootstrapExistingCertifications = onCall<BootstrapCertificationsReq
   }
   requireSameFamily(caller, familyId);
 
-  const result: BootstrapResult = { quartersCertified: [], weeksCertified: [], alreadyCurrent: [] };
+  const result: BootstrapResult = {
+    quartersCertified: [],
+    weeksCertified: [],
+    alreadyCurrent: [],
+    governanceActivated: false,
+  };
 
   for (const quarter of QUARTERS) {
     const quarterStatus = await getFamilyQuarterCertificationStatus(familyId, quarter);
@@ -274,6 +289,19 @@ export const bootstrapExistingCertifications = onCall<BootstrapCertificationsReq
       }
       await certifyWeekInternal({ familyId, quarter, week, certifiedByUid: caller.uid, source: "bootstrap" });
       result.weeksCertified.push({ quarter, week });
+    }
+  }
+
+  const db = getFirestore();
+  const familyRef = db.collection("families").doc(familyId);
+  const familySnap = await familyRef.get();
+  if (familySnap.exists) {
+    const family = familySnap.data() as Family;
+    if (shouldActivateGovernance(getCurriculumGovernanceMode(family))) {
+      await familyRef.update({
+        curriculumGovernance: { mode: "governed", activatedByUid: caller.uid, activatedAt: Timestamp.now() },
+      });
+      result.governanceActivated = true;
     }
   }
 

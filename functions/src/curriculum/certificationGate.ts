@@ -1,4 +1,4 @@
-import type { DayDesignationType, PlacementKidKey, Quarter } from "../types";
+import type { CurriculumGovernanceMode, DayDesignationType, PlacementKidKey, Quarter } from "../types";
 
 /**
  * Pure decision logic for whether generatePlan may ground a NEW day plan
@@ -6,32 +6,46 @@ import type { DayDesignationType, PlacementKidKey, Quarter } from "../types";
  * Firestore lookups so the actual gating decision is unit-testable without
  * a database (see certificationGate.test.ts).
  *
- * Revised in build-order step 3.1: certification is a FAMILY-level
- * instructional-package boundary (see types.ts's FamilyQuarterCertification/
- * FamilyWeeklyCertification doc comments), and "no content" is no longer
- * automatically treated as "nothing to gate" — see the five outcomes below.
+ * Revised in build-order step 3.2: the top-level switch between
+ * enforcement and pre-governance compatibility is now an EXPLICIT,
+ * family-level governanceMode ("legacy" | "governed" — see types.ts's
+ * CurriculumGovernanceState and curriculumGovernance.ts), never inferred
+ * from whether any particular quarter happens to have a certification
+ * record. Step 3.1's mistake was treating "this quarter has never been
+ * certified" as itself meaning "nothing to enforce yet" — under
+ * "governed" mode, a quarter that's never been certified is exactly the
+ * case that must block (a brand-new Q2 doesn't get a free pass just
+ * because nobody's certified it yet).
+ *
  * A day's status is always exactly one of:
  *
- *   A. certified          — expected content exists and is currently certified.
- *   B. blocked_uncertified — expected content exists but the family week
- *                            isn't certified yet, or is stale (some child's
- *                            material changed since it was certified).
- *   C. blocked_missing     — the quarter is under governance (the family
- *                            has certified it before) so content was
- *                            EXPECTED for this kid/week, but none exists —
- *                            a real configuration gap, not a normal case.
- *   D. alternative_package — an explicit, teacher-declared DayDesignation
- *                            says today uses a non-standard package for
- *                            this kid (field trip, etc.).
- *   E. non_instructional   — an explicit, teacher-declared DayDesignation
- *                            says today isn't an instructional day for
- *                            this kid (PTO/break).
- *   not_governed            — the quarter itself has never been certified
- *                            by the family at all (e.g. Q2 today, before
- *                            anyone has started it) — nothing to enforce
- *                            yet; same as pre-certification behavior.
+ *   1. legacy_compatibility — governanceMode is "legacy": existing
+ *                             pre-governance behavior continues untouched
+ *                             (ground on content if present, nothing if
+ *                             not, never block). The family's default
+ *                             until a teacher deliberately activates
+ *                             governance (see bootstrapExistingCertifications).
+ *   2. certified            — governed, and both the quarter and the
+ *                             family week are currently certified.
+ *   3/4. blocked_quarter    — governed, but the quarter itself is not
+ *                             currently certified (never certified, or
+ *                             certified against an older framework/shape).
+ *                             Blocks before even looking at the week.
+ *   5. blocked_week         — governed, quarter is certified, but the
+ *                             family WEEK isn't (never certified or
+ *                             stale — names which child's material caused
+ *                             staleness).
+ *   6. alternative_package  — an explicit, teacher-declared DayDesignation
+ *                             says today uses a non-standard package for
+ *                             this kid (field trip, etc.).
+ *   7. non_instructional    — an explicit, teacher-declared DayDesignation
+ *                             says today isn't an instructional day for
+ *                             this kid (PTO/break).
+ *   8. blocked_missing      — governed, quarter AND week are certified,
+ *                             but this specific kid has no content at all
+ *                             — "Curriculum Assistance Required."
  *
- * D and E can ONLY be reached via an explicit dayDesignation input — there
+ * 6 and 7 can ONLY be reached via an explicit dayDesignation input — there
  * is no code path here that infers them from content merely being absent
  * (certificationGate.test.ts asserts this directly).
  */
@@ -40,15 +54,20 @@ export type FamilyWeekStatus = "certified" | "stale" | "neverCertified";
 
 export type CertificationGateOutcome =
   | "certified"
-  | "blocked_uncertified"
+  | "legacy_compatibility"
+  | "blocked_quarter"
+  | "blocked_week"
   | "blocked_missing"
   | "alternative_package"
-  | "non_instructional"
-  | "not_governed";
+  | "non_instructional";
 
 export type CertificationGateDecision =
-  | { outcome: "certified" | "alternative_package" | "non_instructional" | "not_governed"; allow: true; description?: string }
-  | { outcome: "blocked_uncertified" | "blocked_missing"; allow: false; reason: string };
+  | {
+      outcome: "certified" | "legacy_compatibility" | "alternative_package" | "non_instructional";
+      allow: true;
+      description?: string;
+    }
+  | { outcome: "blocked_quarter" | "blocked_week" | "blocked_missing"; allow: false; reason: string };
 
 export interface DayDesignationInfo {
   type: DayDesignationType;
@@ -62,11 +81,12 @@ const KID_LABEL: Record<PlacementKidKey, string> = {
 };
 
 export function evaluateCertificationGate(params: {
-  /** Has the family EVER certified this quarter at all (regardless of current staleness)? */
-  quarterGoverned: boolean;
+  governanceMode: CurriculumGovernanceMode;
+  /** The QUARTER's own certification status — only meaningful when governanceMode is "governed". */
+  quarterStatus: FamilyWeekStatus;
   /** Does this specific kid have curriculum content written for this week? */
   hasContent: boolean;
-  /** The FAMILY week's certification status — only meaningful when quarterGoverned && hasContent. */
+  /** The FAMILY week's certification status — only meaningful when governed && quarterStatus === "certified" && hasContent. */
   familyWeekStatus: FamilyWeekStatus;
   /** Which kid(s) caused the family week to go stale, when familyWeekStatus is "stale". */
   staleKidKeys: PlacementKidKey[];
@@ -76,19 +96,30 @@ export function evaluateCertificationGate(params: {
   quarter: Quarter;
   week: number;
 }): CertificationGateDecision {
-  // Explicit designation always wins — this is the ONLY path to D or E.
+  // Explicit designation always wins — this is the ONLY path to 6 or 7.
   if (params.dayDesignation) {
     return params.dayDesignation.type === "alternativePackage"
       ? { outcome: "alternative_package", allow: true, description: params.dayDesignation.description }
       : { outcome: "non_instructional", allow: true, description: params.dayDesignation.description };
   }
 
-  if (!params.quarterGoverned) {
-    return { outcome: "not_governed", allow: true };
+  if (params.governanceMode === "legacy") {
+    return { outcome: "legacy_compatibility", allow: true };
   }
 
   const kidLabel = KID_LABEL[params.kidKey];
-  const location = `${params.quarter.toUpperCase()} Week ${params.week}`;
+  const quarterLabel = params.quarter.toUpperCase();
+  const location = `${quarterLabel} Week ${params.week}`;
+
+  if (params.quarterStatus !== "certified") {
+    const reason =
+      params.quarterStatus === "neverCertified"
+        ? `This family's ${quarterLabel} quarter has not been certified yet. Quarter certification is required ` +
+          `before generating a new plan for ${kidLabel}.`
+        : `This family's ${quarterLabel} quarter certification is stale — the certified framework no longer ` +
+          `matches the current content. Re-certify the quarter before generating a new plan for ${kidLabel}.`;
+    return { outcome: "blocked_quarter", allow: false, reason };
+  }
 
   if (!params.hasContent) {
     return {
@@ -96,26 +127,23 @@ export function evaluateCertificationGate(params: {
       allow: false,
       reason:
         `Curriculum Assistance Required: ${kidLabel} has no curriculum content for ${location}, but this family's ` +
-        `${params.quarter.toUpperCase()} is under certification governance, so content was expected. Either add ` +
-        `${kidLabel}'s content, or explicitly designate this date as an alternative-package or non-instructional ` +
-        `day if that's what's actually happening — a missing file is never assumed to mean that on its own.`,
+        `${quarterLabel} is certified and under governance, so content was expected. Either add ${kidLabel}'s ` +
+        `content, or explicitly designate this date as an alternative-package or non-instructional day if that's ` +
+        `what's actually happening — a missing file is never assumed to mean that on its own.`,
     };
   }
 
-  if (params.familyWeekStatus === "certified") {
-    return { outcome: "certified", allow: true };
-  }
-
-  const staleNote =
-    params.familyWeekStatus === "stale" && params.staleKidKeys.length > 0
-      ? ` — ${params.staleKidKeys.map((k) => KID_LABEL[k]).join(" and ")}'s material changed since it was last certified`
-      : "";
-  return {
-    outcome: "blocked_uncertified",
-    allow: false,
-    reason:
+  if (params.familyWeekStatus !== "certified") {
+    const staleNote =
+      params.familyWeekStatus === "stale" && params.staleKidKeys.length > 0
+        ? ` — ${params.staleKidKeys.map((k) => KID_LABEL[k]).join(" and ")}'s material changed since it was last certified`
+        : "";
+    const reason =
       params.familyWeekStatus === "stale"
         ? `This family's ${location} instructional package is stale${staleNote}. Re-certify the week before generating a new plan for ${kidLabel}.`
-        : `This family's ${location} instructional package has not been certified yet. Certify the week before generating a new plan for ${kidLabel}.`,
-  };
+        : `This family's ${location} instructional package has not been certified yet. Certify the week before generating a new plan for ${kidLabel}.`;
+    return { outcome: "blocked_week", allow: false, reason };
+  }
+
+  return { outcome: "certified", allow: true };
 }

@@ -6,11 +6,17 @@ import { requireCaller, requireTeacher } from "./util/auth";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getQuarterAndWeek, loadWeekContent } from "./curriculum/loadCurriculumContent";
-import { getFamilyWeeklyCertificationStatus, type FamilyWeekStatusResult } from "./curriculum/certificationStatus";
+import {
+  getFamilyQuarterCertificationStatus,
+  getFamilyWeeklyCertificationStatus,
+  type FamilyQuarterStatusResult,
+  type FamilyWeekStatusResult,
+} from "./curriculum/certificationStatus";
 import { evaluateCertificationGate } from "./curriculum/certificationGate";
+import { getCurriculumGovernanceMode } from "./curriculum/curriculumGovernance";
 import { getDayDesignationsForDate, findDesignationForKid } from "./curriculum/dayDesignation";
 import { inferKidKey } from "./curriculum/placementTestItems";
-import type { DayDesignation, Family, MasteryRecord, Quarter, Subject, UserProfile } from "./types";
+import type { CurriculumGovernanceMode, DayDesignation, Family, MasteryRecord, Quarter, Subject, UserProfile } from "./types";
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
@@ -42,19 +48,23 @@ interface StudentContext {
  * student can't be resolved (unknown id, non-family-member, etc.) — the
  * generator still works with less context rather than failing outright.
  *
- * Certification gate (build-order step 3, revised 3.1 — see
- * certificationGate.ts for the full state machine): quarterAndWeek and
- * familyWeekStatus are resolved ONCE by the caller (they don't vary per
- * student — the family week status governs every kid's package together),
- * and dayDesignations is this date's full list of explicit teacher
- * overrides, also fetched once. Throws failed-precondition when the gate
- * blocks (content exists but uncertified/stale, or content is unexpectedly
- * missing in a governed quarter) rather than silently proceeding.
+ * Certification gate (build-order step 3, revised 3.1/3.2 — see
+ * certificationGate.ts for the full state machine): governanceMode,
+ * quarterAndWeek, familyQuarterStatus, and familyWeekStatus are all
+ * resolved ONCE by the caller (they don't vary per student — the family
+ * package governs every kid together), and dayDesignations is this date's
+ * full list of explicit teacher overrides, also fetched once. Throws
+ * failed-precondition when the gate blocks — content exists but
+ * uncertified/stale, content is unexpectedly missing in a governed
+ * quarter, or (3.2) the quarter itself isn't currently certified at all
+ * under "governed" mode — rather than silently proceeding.
  */
 async function buildStudentContext(
   studentId: string,
   familyId: string,
+  governanceMode: CurriculumGovernanceMode,
   quarterAndWeek: { quarter: Quarter; week: number } | null,
+  familyQuarterStatus: FamilyQuarterStatusResult | null,
   familyWeekStatus: FamilyWeekStatusResult | null,
   dayDesignations: DayDesignation[]
 ): Promise<StudentContext | null> {
@@ -113,7 +123,8 @@ async function buildStudentContext(
     const designation = findDesignationForKid(dayDesignations, kidKey);
 
     const gate = evaluateCertificationGate({
-      quarterGoverned: familyWeekStatus?.quarterGoverned ?? false,
+      governanceMode,
+      quarterStatus: familyQuarterStatus?.status ?? "neverCertified",
       hasContent: weekContent !== null,
       familyWeekStatus: familyWeekStatus?.status ?? "neverCertified",
       staleKidKeys: familyWeekStatus?.staleKidKeys ?? [],
@@ -134,11 +145,11 @@ async function buildStudentContext(
       // explicit designation overrides ordinary curriculum grounding for
       // this date, it doesn't add to it.
     } else if (weekContent) {
-      // Reaches here only for "certified" or "not_governed" — both
-      // "blocked_*" outcomes already threw above. "not_governed" grounds
-      // on whatever content exists exactly like pre-certification
-      // behavior (nothing is being enforced yet for this quarter); only
-      // "certified" has an actual certification record to attribute it to.
+      // Reaches here only for "certified" or "legacy_compatibility" —
+      // every "blocked_*" outcome already threw above. Legacy mode grounds
+      // on whatever content exists exactly like pre-certification behavior
+      // (nothing is enforced under "legacy"); only "certified" has an
+      // actual certification record to attribute it to.
       if (gate.outcome === "certified") {
         weeklyCertificationId = familyWeekStatus?.latest?.id ?? null;
       }
@@ -236,13 +247,16 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         const family = familySnap.data() as Family;
         const schoolYearStart = family.schoolYear.startDate.toDate();
         const planDate = new Date(date);
+        const governanceMode = getCurriculumGovernanceMode(family);
 
-        // Resolved ONCE, not per student: the family week's certification
-        // status and this date's explicit teacher overrides both govern
-        // every kid's package together, not independently (build-order
-        // step 3.1 — see certificationGate.ts).
+        // Resolved ONCE, not per student: the family's governance mode,
+        // quarter/week certification status, and this date's explicit
+        // teacher overrides all govern every kid's package together, not
+        // independently (build-order step 3.1/3.2 — see
+        // certificationGate.ts).
         const quarterAndWeek = getQuarterAndWeek(schoolYearStart, planDate);
-        const [familyWeekStatus, dayDesignations] = await Promise.all([
+        const [familyQuarterStatus, familyWeekStatus, dayDesignations] = await Promise.all([
+          quarterAndWeek ? getFamilyQuarterCertificationStatus(familyId, quarterAndWeek.quarter) : Promise.resolve(null),
           quarterAndWeek
             ? getFamilyWeeklyCertificationStatus(familyId, quarterAndWeek.quarter, quarterAndWeek.week)
             : Promise.resolve(null),
@@ -250,7 +264,17 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         ]);
 
         const contexts = await Promise.all(
-          ids.map((id) => buildStudentContext(id, familyId, quarterAndWeek, familyWeekStatus, dayDesignations))
+          ids.map((id) =>
+            buildStudentContext(
+              id,
+              familyId,
+              governanceMode,
+              quarterAndWeek,
+              familyQuarterStatus,
+              familyWeekStatus,
+              dayDesignations
+            )
+          )
         );
         const validContexts = contexts.filter((c): c is StudentContext => c !== null);
         if (validContexts.length > 0) {

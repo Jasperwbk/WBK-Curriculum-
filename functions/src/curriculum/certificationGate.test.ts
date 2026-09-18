@@ -10,10 +10,104 @@ const BASE = {
   dayDesignation: null,
 };
 
-test("A: allows generation when the family week is certified and current", () => {
+// --- 1. Legacy / pre-governance mode ---
+
+test("legacy: grounds on content when it exists, regardless of any certification status", () => {
   const decision = evaluateCertificationGate({
     ...BASE,
-    quarterGoverned: true,
+    governanceMode: "legacy",
+    quarterStatus: "neverCertified",
+    hasContent: true,
+    familyWeekStatus: "neverCertified",
+  });
+  assert.equal(decision.outcome, "legacy_compatibility");
+  assert.equal(decision.allow, true);
+});
+
+test("legacy: allows generation with no content too (nothing to ground on, nothing to block)", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "legacy",
+    quarterStatus: "neverCertified",
+    hasContent: false,
+    familyWeekStatus: "neverCertified",
+  });
+  assert.equal(decision.outcome, "legacy_compatibility");
+  assert.equal(decision.allow, true);
+});
+
+test("legacy: never blocks even if the quarter/week statuses would otherwise be stale", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "legacy",
+    quarterStatus: "stale",
+    hasContent: true,
+    familyWeekStatus: "stale",
+    staleKidKeys: ["makaio"],
+  });
+  assert.equal(decision.outcome, "legacy_compatibility");
+  assert.equal(decision.allow, true);
+});
+
+// --- Missing certification alone must NOT imply legacy mode ---
+
+test("missing certification records do not, by themselves, put the gate in legacy mode — governed + never-certified still blocks", () => {
+  // This is the exact bug step 3.2 corrects: a quarter having no
+  // certification record at all used to be read as \"nothing to enforce
+  // yet\" regardless of governance state. Now governanceMode is the only
+  // thing that can produce legacy-style permissiveness — the absence of a
+  // certification record, on its own, must still block under \"governed\".
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "neverCertified",
+    hasContent: true,
+    familyWeekStatus: "neverCertified",
+  });
+  assert.notEqual(decision.outcome, "legacy_compatibility");
+  assert.equal(decision.outcome, "blocked_quarter");
+  assert.equal(decision.allow, false);
+});
+
+// --- 2/3/4. Governed quarter states ---
+
+test("governed + never-certified quarter blocks with a 'quarter certification is required' message, before even checking the week", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "neverCertified",
+    hasContent: false, // even with no content, the quarter check fires first
+    familyWeekStatus: "neverCertified",
+  });
+  assert.equal(decision.outcome, "blocked_quarter");
+  assert.equal(decision.allow, false);
+  if (!decision.allow) {
+    assert.match(decision.reason, /not been certified yet/);
+    assert.match(decision.reason, /Quarter certification is required/);
+  }
+});
+
+test("governed + stale quarter blocks with a re-certify message", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "stale",
+    hasContent: true,
+    familyWeekStatus: "certified",
+  });
+  assert.equal(decision.outcome, "blocked_quarter");
+  assert.equal(decision.allow, false);
+  if (!decision.allow) {
+    assert.match(decision.reason, /stale/);
+    assert.match(decision.reason, /Re-certify the quarter/);
+  }
+});
+
+test("governed + certified quarter proceeds to the weekly gate — certified week allows", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "certified",
     hasContent: true,
     familyWeekStatus: "certified",
   });
@@ -21,53 +115,11 @@ test("A: allows generation when the family week is certified and current", () =>
   assert.equal(decision.allow, true);
 });
 
-test("B: blocks when content exists but the family week was never certified (quarter is governed)", () => {
+test("governed + certified quarter, but content missing for this kid -> blocked_missing ('Curriculum Assistance Required')", () => {
   const decision = evaluateCertificationGate({
     ...BASE,
-    quarterGoverned: true,
-    hasContent: true,
-    familyWeekStatus: "neverCertified",
-  });
-  assert.equal(decision.outcome, "blocked_uncertified");
-  assert.equal(decision.allow, false);
-  if (!decision.allow) assert.match(decision.reason, /has not been certified yet/);
-});
-
-test("B: blocks when content exists but the family week is stale, naming the child(ren) who caused it", () => {
-  const decision = evaluateCertificationGate({
-    ...BASE,
-    quarterGoverned: true,
-    hasContent: true,
-    familyWeekStatus: "stale",
-    staleKidKeys: ["makaio"],
-  });
-  assert.equal(decision.outcome, "blocked_uncertified");
-  assert.equal(decision.allow, false);
-  if (!decision.allow) {
-    assert.match(decision.reason, /stale/);
-    assert.match(decision.reason, /Makaio/);
-  }
-});
-
-test("B: stale message lists multiple culprits when more than one child changed", () => {
-  const decision = evaluateCertificationGate({
-    ...BASE,
-    quarterGoverned: true,
-    hasContent: true,
-    familyWeekStatus: "stale",
-    staleKidKeys: ["makaio", "maizley"],
-  });
-  assert.equal(decision.allow, false);
-  if (!decision.allow) {
-    assert.match(decision.reason, /Makaio/);
-    assert.match(decision.reason, /Maizley/);
-  }
-});
-
-test("C: blocks with 'Curriculum Assistance Required' when a governed quarter is missing a kid's content unexpectedly", () => {
-  const decision = evaluateCertificationGate({
-    ...BASE,
-    quarterGoverned: true,
+    governanceMode: "governed",
+    quarterStatus: "certified",
     hasContent: false,
     familyWeekStatus: "neverCertified",
   });
@@ -79,32 +131,44 @@ test("C: blocks with 'Curriculum Assistance Required' when a governed quarter is
   }
 });
 
-test("not_governed: allows generation when the quarter has never been certified at all (e.g. an unstarted future quarter)", () => {
-  const decisionNoContent = evaluateCertificationGate({
+test("governed + certified quarter, content exists, but the family week was never certified -> blocked_week", () => {
+  const decision = evaluateCertificationGate({
     ...BASE,
-    quarterGoverned: false,
-    hasContent: false,
-    familyWeekStatus: "neverCertified",
-  });
-  assert.equal(decisionNoContent.outcome, "not_governed");
-  assert.equal(decisionNoContent.allow, true);
-
-  // Even if content somehow exists for an ungoverned quarter, it's still
-  // not_governed — the family simply hasn't started governing it yet.
-  const decisionWithContent = evaluateCertificationGate({
-    ...BASE,
-    quarterGoverned: false,
+    governanceMode: "governed",
+    quarterStatus: "certified",
     hasContent: true,
     familyWeekStatus: "neverCertified",
   });
-  assert.equal(decisionWithContent.outcome, "not_governed");
-  assert.equal(decisionWithContent.allow, true);
+  assert.equal(decision.outcome, "blocked_week");
+  assert.equal(decision.allow, false);
+  if (!decision.allow) assert.match(decision.reason, /has not been certified yet/);
 });
 
-test("D: an explicit alternativePackage designation allows generation even with no content and an uncertified/ungoverned quarter", () => {
+test("governed + certified quarter, content exists, family week is stale -> blocked_week, naming the culprit(s)", () => {
   const decision = evaluateCertificationGate({
     ...BASE,
-    quarterGoverned: true,
+    governanceMode: "governed",
+    quarterStatus: "certified",
+    hasContent: true,
+    familyWeekStatus: "stale",
+    staleKidKeys: ["makaio", "maizley"],
+  });
+  assert.equal(decision.outcome, "blocked_week");
+  assert.equal(decision.allow, false);
+  if (!decision.allow) {
+    assert.match(decision.reason, /stale/);
+    assert.match(decision.reason, /Makaio/);
+    assert.match(decision.reason, /Maizley/);
+  }
+});
+
+// --- 6/7. Explicit designations ---
+
+test("D: an explicit alternativePackage designation allows generation even under governed mode with a never-certified quarter", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "neverCertified",
     hasContent: false,
     familyWeekStatus: "neverCertified",
     dayDesignation: { type: "alternativePackage", description: "Field trip to the science museum." },
@@ -114,10 +178,11 @@ test("D: an explicit alternativePackage designation allows generation even with 
   if (decision.allow) assert.equal(decision.description, "Field trip to the science museum.");
 });
 
-test("E: an explicit nonInstructional designation allows generation even with no content", () => {
+test("E: an explicit nonInstructional designation allows generation even under governed mode", () => {
   const decision = evaluateCertificationGate({
     ...BASE,
-    quarterGoverned: true,
+    governanceMode: "governed",
+    quarterStatus: "stale",
     hasContent: false,
     familyWeekStatus: "neverCertified",
     dayDesignation: { type: "nonInstructional", description: "Approved family PTO day." },
@@ -127,21 +192,25 @@ test("E: an explicit nonInstructional designation allows generation even with no
   if (decision.allow) assert.equal(decision.description, "Approved family PTO day.");
 });
 
-test("D/E are never reachable without an explicit dayDesignation input, across every other combination", () => {
-  const boolCombos = [true, false];
+test("D/E are never reachable without an explicit dayDesignation input, across every governance/status combination", () => {
+  const modes: ("legacy" | "governed")[] = ["legacy", "governed"];
   const statuses: ("certified" | "stale" | "neverCertified")[] = ["certified", "stale", "neverCertified"];
-  for (const quarterGoverned of boolCombos) {
-    for (const hasContent of boolCombos) {
-      for (const familyWeekStatus of statuses) {
-        const decision = evaluateCertificationGate({
-          ...BASE,
-          quarterGoverned,
-          hasContent,
-          familyWeekStatus,
-          dayDesignation: null, // explicitly absent in every combination
-        });
-        assert.notEqual(decision.outcome, "alternative_package");
-        assert.notEqual(decision.outcome, "non_instructional");
+  const boolCombos = [true, false];
+  for (const governanceMode of modes) {
+    for (const quarterStatus of statuses) {
+      for (const hasContent of boolCombos) {
+        for (const familyWeekStatus of statuses) {
+          const decision = evaluateCertificationGate({
+            ...BASE,
+            governanceMode,
+            quarterStatus,
+            hasContent,
+            familyWeekStatus,
+            dayDesignation: null, // explicitly absent in every combination
+          });
+          assert.notEqual(decision.outcome, "alternative_package");
+          assert.notEqual(decision.outcome, "non_instructional");
+        }
       }
     }
   }
