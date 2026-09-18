@@ -5,6 +5,7 @@ import { TeacherDashboardPage } from "./pages/TeacherDashboardPage";
 import { LogActivityPage } from "./pages/LogActivityPage";
 import { PlanDayPage } from "./pages/PlanDayPage";
 import { ProposedDaysPage } from "./pages/ProposedDaysPage";
+import { EndOfDayClosingPage } from "./pages/EndOfDayClosingPage";
 import { PlacementTestPage } from "./pages/PlacementTestPage";
 import { CheckInPage } from "./pages/CheckInPage";
 import { UploadPage } from "./pages/UploadPage";
@@ -46,6 +47,7 @@ function Gate() {
       <Route path="/log" element={<LogActivityPage />} />
       <Route path="/plan" element={<PlanDayPage />} />
       <Route path="/proposed-days" element={<ProposedDaysPage />} />
+      <Route path="/closeout" element={<EndOfDayClosingPage />} />
       <Route path="/placement" element={<PlacementTestPage />} />
       <Route path="/checkin" element={<CheckInPage />} />
       <Route path="/upload" element={<UploadPage />} />

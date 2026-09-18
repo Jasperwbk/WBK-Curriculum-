@@ -14,4 +14,15 @@ export {
   approveProposedDay,
   saveProposedDayDraft,
   getGenerationTargetDate,
+  // setAssessmentEligibility was built and tested in step 5 but never
+  // actually wired into this export list — caught during step 6 while
+  // adding its own exports below; it would never have been deployable
+  // until now.
+  setAssessmentEligibility,
 } from "./proposedDays";
+export {
+  openEvidencePacket,
+  saveEvidencePacketDraft,
+  approveEvidencePacket,
+  approveEvidencePackets,
+} from "./evidencePackets";

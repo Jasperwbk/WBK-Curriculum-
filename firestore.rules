@@ -168,6 +168,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // End-of-day evidence/completion/actual-instructional-time packets
+    // (build-order step 6), written only by evidencePackets.ts's
+    // openEvidencePacket/saveEvidencePacketDraft/approveEvidencePacket(s)
+    // (via the approval primitive above — admin SDK, bypasses these
+    // rules). Teacher-only for now, same reasoning as proposedDays: no
+    // student-facing view of their own evidence exists yet, so there's
+    // no owner-read clause here either — add one when that view is
+    // actually built.
+    match /evidencePackets/{packetId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
     // Database-backed curriculum content (the "upload a new quarter" flow).
     // Written directly by the teacher's client after a local, deterministic
     // parse — no Cloud Function in the loop, same trust level as logs/tests.

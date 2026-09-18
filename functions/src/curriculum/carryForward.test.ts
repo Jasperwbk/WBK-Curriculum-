@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { attachCarryForwardProvenance, computeOutstandingCarryForward } from "./carryForward";
-import type { LearningBlock } from "../types";
+import { computeCarryForwardFromPacket } from "./evidencePacketStore";
+import type { EvidenceBlockEntry, LearningBlock } from "../types";
 
 function block(overrides: Partial<LearningBlock> & Pick<LearningBlock, "blockId">): LearningBlock {
   return {
@@ -112,4 +113,31 @@ test("attachCarryForwardProvenance never mutates the OLD (outstanding) block's o
   const newBlocks = [block({ blockId: "new-1", objectiveIds: ["id-1"] })];
   attachCarryForwardProvenance(newBlocks, outstanding, "day-abc", "2026-09-14");
   assert.equal(outstanding[0].completionState, "in_progress");
+});
+
+test("attachCarryForwardProvenance also accepts step 6's EvidenceBlockEntry[] (from computeCarryForwardFromPacket) directly as `outstanding`, with no adapter needed — the real cross-file usage in proposedDays.ts's loadOutstandingCarryForward", () => {
+  const packetBlocks: EvidenceBlockEntry[] = [
+    {
+      blockId: "old-1",
+      subject: "math",
+      title: "Weighing produce",
+      required: true,
+      objectiveIds: ["millaray-w1-math-1"],
+      plannedMinutes: 20,
+      reportedMinutes: null,
+      approvedMinutes: null,
+      completionState: "not_started", // step 6: not_started IS outstanding from a real packet
+      assessmentEligible: true,
+      objectiveEvidence: [],
+      sourceQuarterCertificationId: "OLD-QC",
+      sourceWeeklyCertificationId: "OLD-WC",
+    },
+  ];
+  const outstanding = computeCarryForwardFromPacket(packetBlocks);
+  assert.equal(outstanding.length, 1);
+
+  const newBlocks = [block({ blockId: "new-1", objectiveIds: ["millaray-w1-math-1"] })];
+  const tagged = attachCarryForwardProvenance(newBlocks, outstanding, "day-abc", "2026-09-14");
+  assert.equal(tagged[0].carryForward?.fromBlockId, "old-1");
+  assert.equal(tagged[0].sourceQuarterCertificationId, "OLD-QC");
 });

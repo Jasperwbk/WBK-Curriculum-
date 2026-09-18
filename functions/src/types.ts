@@ -73,6 +73,17 @@ export interface LogEntry {
   location: Location;
   source: LogSource;
   extracurricularId?: string; // set when source === "extracurricular"
+  /**
+   * Set only on a log written by evidencePackets.ts's approval flow
+   * (build-order step 6) — the one governed path from an approved
+   * EndOfDayEvidencePacket to official instructional minutes. Absent on
+   * every pre-step-6 record and on every ordinary manually-logged entry
+   * (LogActivityPage) — both keep counting toward dashboard/compliance
+   * totals exactly as before; this field is provenance only, getActualHoursToDate
+   * (dashboard.ts) does not filter on it. See evidencePackets.ts's top
+   * comment for the full legacy-compatibility rule.
+   */
+  evidencePacketId?: string;
 }
 
 export interface ExtracurricularRecord {
@@ -725,4 +736,192 @@ export interface ProposedDayDraft {
   revision: number;
   lastEditedByUid: string;
   lastEditedAt: Timestamp;
+}
+
+// --- End-of-day evidence / completion / actual instructional time
+// (Builder Guide; build-order step 6) ---
+//
+// CORE AUTHORITY RULE: a generated/approved ProposedDay is a PLAN. It
+// never becomes evidence merely because it was scheduled — completion,
+// actual minutes, and objective evidence all live here instead, in a
+// wholly separate collection (evidencePackets), keyed back to the source
+// ProposedDay/block/objective for full traceability. ProposedDay itself
+// is never mutated by closeout — its LearningBlock.completionState stays
+// "not_started" forever, exactly as step 5 left it; this collection is
+// what actually tracks "what happened." AI may organize/summarize/
+// propose evidence (a future step, not built here); it never certifies
+// that learning occurred — every packet requires a real teacher approval
+// before anything in it can affect mastery or official hours.
+
+export type EvidencePacketStatus = "open" | "approved";
+
+/**
+ * "not_started"/"in_progress"/"completed" are the real states a block
+ * moves through during the day. "excused" is a fourth, carefully-scoped
+ * state (build-order step 6, requirement 3): a REQUIRED block the
+ * teacher has explicitly decided NOT to hold the student to today (for a
+ * good reason — captured in excusedReason, always required when this
+ * state is set). Its effect: excused work does NOT become a carry-
+ * forward candidate (unlike not_started/in_progress), does NOT produce
+ * mastery evidence (no objectiveEvidence is expected against it), and
+ * does NOT imply any minutes were spent (reportedMinutes is whatever the
+ * teacher actually reports, typically 0/unset) — but it is NOT the same
+ * as "completed": nothing was demonstrated, so it must never be treated
+ * as evidence that the objective was learned.
+ */
+export type PacketBlockCompletionState = "not_started" | "in_progress" | "completed" | "excused";
+
+/** Who/what produced a piece of evidence — WBK remains the authority interpreting it regardless of source (build-order step 6, requirement 18: apps are identifiable but not yet integrated). */
+export type EvidenceSourceType =
+  | "teacher_observation"
+  | "student_response"
+  | "worksheet"
+  | "app_activity"
+  | "field_activity"
+  | "project"
+  | "assessment";
+
+/** How the objective was actually demonstrated — deliberately includes Maizley's non-written demonstration modes alongside ordinary written/verbal ones; nothing here forces a written test. */
+export type EvidenceDemonstrationType =
+  | "written_response"
+  | "verbal_explanation"
+  | "tap_show_me"
+  | "matching"
+  | "pointing"
+  | "sorting"
+  | "naming"
+  | "physical_demonstration"
+  | "guided_play"
+  | "teacher_observation_only";
+
+/**
+ * "correct"/"incorrect" are the ordinary right/wrong outcomes; "observed_strong"/
+ * "observed_weak" are their non-binary-check equivalents for a teacher's
+ * firsthand judgment call ("she clearly has this" / "still shaky") where
+ * there's no single right-answer check to grade. "partial" and
+ * "not_applicable" are preserved as real evidence but deliberately do
+ * NOT feed the existing binary 2-of-3 mastery threshold — see
+ * curriculum/evidenceMastery.ts's mapOutcomeToMasteryBoolean and its doc
+ * comment on this exact boundary.
+ */
+export type EvidenceOutcome = "correct" | "incorrect" | "partial" | "observed_strong" | "observed_weak" | "not_applicable";
+
+/**
+ * Typed reference/metadata only (build-order step 6, requirement 13) —
+ * deliberately NOT a media-storage system. `url` is optional and only
+ * ever set when a file already exists somewhere (e.g. the existing
+ * uploads/Storage flow) — routine schoolwork never requires a photo.
+ */
+export interface ArtifactReference {
+  kind: "worksheet" | "notebook_page" | "drawing" | "project" | "field_observation" | "app_activity" | "photo" | "other";
+  description: string;
+  url?: string;
+}
+
+/**
+ * One piece of evidence toward one objective. `assessmentEligible` is
+ * this item's OWN "Do Not Use for Assessment" flag — the finest of the
+ * three granularities (result/block/day; see EvidenceBlockEntry.assessmentEligible
+ * and EvidencePacketDraft.dayAssessmentEligible). `recordedByUid`/
+ * `recordedAt` are always server-set from the calling teacher, never
+ * trusted from client input.
+ */
+export interface ObjectiveEvidenceItem {
+  objectiveId: string;
+  demonstrationType: EvidenceDemonstrationType;
+  outcome: EvidenceOutcome;
+  sourceType: EvidenceSourceType;
+  /** Free-text teacher observation, e.g. "explained regrouping correctly aloud, no prompting." Legitimate evidence on its own — no AI-generated quiz result is required for this item to exist. */
+  observation?: string;
+  assessmentEligible: boolean;
+  recordedByUid: string;
+  recordedAt: Timestamp;
+  artifacts?: ArtifactReference[];
+}
+
+/**
+ * One block's closeout record. `blockId`/`subject`/`title`/`required`/
+ * `objectiveIds`/`plannedMinutes`/`sourceQuarterCertificationId`/
+ * `sourceWeeklyCertificationId`/`carryForward` are all copied from the
+ * source ProposedDay's approved LearningBlock at packet-creation time and
+ * NEVER accepted from client input on save (evidenceValidation.ts) —
+ * only a teacher's own observations/minutes/completion/eligibility are
+ * ever client-writable. `plannedMinutes` (the plan's estimate),
+ * `reportedMinutes` (what the teacher reports actually happened, editable
+ * while the packet is open), and `approvedMinutes` (frozen, set ONCE at
+ * approval from whatever reportedMinutes was at that moment) are three
+ * deliberately separate fields — see build-order step 6, requirement 4:
+ * "do not overwrite one with another."
+ */
+export interface EvidenceBlockEntry {
+  blockId: string;
+  subject: Subject;
+  title: string;
+  required: boolean;
+  objectiveIds: string[];
+  plannedMinutes: number;
+  reportedMinutes: number | null;
+  /** null until the packet is approved; then frozen forever at whatever reportedMinutes was. */
+  approvedMinutes: number | null;
+  completionState: PacketBlockCompletionState;
+  /** Required and non-empty whenever completionState is "excused" — see that type's doc comment. */
+  excusedReason?: string;
+  notes?: string;
+  /** This block's own "Do Not Use for Assessment" flag, independent of dayAssessmentEligible and each evidence item's own flag — all three are combined (see evidenceMastery.ts#isEvidenceEligibleForMastery). Seeded from the source ProposedDay's blockAssessmentExclusions when present. */
+  assessmentEligible: boolean;
+  objectiveEvidence: ObjectiveEvidenceItem[];
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
+  /** Preserved from the source block when IT was itself a carried-forward block — carry-forward provenance survives another generation, not just one hop. */
+  carryForward?: CarryForwardProvenance;
+}
+
+export interface EvidencePacketDraft {
+  blocks: EvidenceBlockEntry[];
+  /** Whole-day "Do Not Use for Assessment" — seeded from the source ProposedDay's dayAssessmentEligibility when present, editable here independently afterward. */
+  dayAssessmentEligible: boolean;
+  dayNotes?: string;
+  /** 0 for the seeded, never-actually-edited copy created at packet open; increments by 1 on each saveEvidencePacketDraft call. Same optimistic-concurrency pattern as ProposedDayDraft.revision (checkDraftRevision). */
+  revision: number;
+  lastEditedByUid: string;
+  lastEditedAt: Timestamp;
+}
+
+/**
+ * One per (family, student, date) — deliberately a DETERMINISTIC doc id
+ * (`${familyId}_${studentId}_${date}`, see curriculum/evidencePacketStore.ts)
+ * rather than an auto-id/version-number scheme like ProposedDay: a packet
+ * is teacher-authored once per day, never AI-regenerated, so there's
+ * nothing to "supersede." Immutable once approved — `draft` is the
+ * single mutable "current" object while status is "open", frozen (no
+ * longer editable) once approved, exactly like ProposedDayDraft. Later
+ * correction of an approved packet is explicitly OUT OF SCOPE for step 6
+ * — this model is intentionally immutable-once-approved, with the
+ * correction path reserved (see the step 6 report's "conflicts/decisions
+ * discovered") rather than built now.
+ */
+export interface EndOfDayEvidencePacket {
+  familyId: string;
+  studentId: string;
+  date: string; // ISO "YYYY-MM-DD"
+  /** The APPROVED ProposedDay this packet closes out — a packet can only ever be opened against an approved plan, never a still-pending proposal. */
+  sourceProposedDayId: string;
+  sourceProposalVersion: number;
+  status: EvidencePacketStatus;
+  createdAt: Timestamp;
+  createdByUid: string;
+  draft: EvidencePacketDraft;
+  approvedByUid?: string;
+  approvedAt?: Timestamp;
+  /**
+   * Set once, after approval, by the post-approval side-effect pass that
+   * posts official instructional minutes to `logs` (evidenceHours.ts) —
+   * guards against re-running that pass and double-posting if a retried
+   * call somehow lands between the approval transaction committing and
+   * the side-effect pass finishing (build-order step 6, requirement:
+   * "official hour posting is idempotent").
+   */
+  hoursPostedAt?: Timestamp;
+  /** Same idempotency guard for the mastery-update side effect (evidenceMastery.ts). */
+  masteryAppliedAt?: Timestamp;
 }

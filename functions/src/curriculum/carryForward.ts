@@ -1,27 +1,38 @@
 import type { LearningBlock } from "../types";
 
 /**
- * Pure carry-forward logic (build-order step 5, requirement 6): incomplete
- * required work stays incomplete, is never auto-completed or erased, and
- * MAY carry forward into a future proposed day. Kept separate from
- * proposedDays.ts's Firestore I/O so both the "what counts as outstanding"
- * and "how do we tag a new block with where it came from" decisions are
- * unit-testable without a database (see carryForward.test.ts).
+ * Pure carry-forward logic (build-order step 5, requirement 6; made
+ * authoritative in step 6, requirement 10): incomplete required work
+ * stays incomplete, is never auto-completed or erased, and MAY carry
+ * forward into a future proposed day. Kept separate from proposedDays.ts's
+ * Firestore I/O so both the "what counts as outstanding" and "how do we
+ * tag a new block with where it came from" decisions are unit-testable
+ * without a database (see carryForward.test.ts).
  *
- * Deliberately only "in_progress" (started but not finished) counts as
- * outstanding — NOT "not_started". Nothing in step 5 (or step 4/4.1) ever
- * writes anything but "not_started" to a block's completionState (there is
- * no student "day of" execution UI yet, so nothing ever records that a
- * block was actually attempted) — treating "not_started" as "incomplete,
- * please carry forward" would mean EVERY required block from every
- * approved day gets flagged forever, which is actively wrong, not just
- * unused. "in_progress" only starts being written once step 6's
- * end-of-day evidence packet exists, at which point this function starts
- * doing real work; until then it always returns an empty array, which is
- * the correct, safe behavior today — see the step 5 report.
+ * computeOutstandingCarryForward below reads ProposedDay's own
+ * LearningBlock[] — deliberately only "in_progress" counts, NOT
+ * "not_started", because nothing ever writes real completion onto a
+ * ProposedDay (build-order step 5's design: a plan is never mutated by
+ * closeout — see types.ts's EndOfDayEvidencePacket doc comment). This
+ * function's real replacement, once a day has actually been closed out,
+ * is curriculum/evidencePacketStore.ts#computeCarryForwardFromPacket,
+ * which DOES treat "not_started" as outstanding too (an evidence packet
+ * is a genuine record of what happened, so "never touched" really does
+ * mean incomplete there) — proposedDays.ts's loadOutstandingCarryForward
+ * prefers that signal when an approved packet exists, falling back to
+ * this function only when it doesn't (e.g. a day was approved but never
+ * closed out yet).
  */
 export function computeOutstandingCarryForward(blocks: readonly LearningBlock[]): LearningBlock[] {
   return blocks.filter((b) => b.required && b.completionState === "in_progress");
+}
+
+/** The minimal shape attachCarryForwardProvenance actually needs from an "outstanding" item — both LearningBlock and (step 6) EvidenceBlockEntry satisfy this structurally, so either can be passed as `outstanding` without an adapter. */
+export interface CarryForwardSource {
+  blockId: string;
+  objectiveIds: readonly string[];
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
 }
 
 /**
@@ -35,7 +46,7 @@ export function computeOutstandingCarryForward(blocks: readonly LearningBlock[])
  */
 export function attachCarryForwardProvenance(
   newBlocks: readonly LearningBlock[],
-  outstanding: readonly LearningBlock[],
+  outstanding: readonly CarryForwardSource[],
   fromProposedDayId: string,
   fromDate: string
 ): LearningBlock[] {

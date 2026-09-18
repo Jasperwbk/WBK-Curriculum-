@@ -18,6 +18,10 @@ import { getGenerationLeadDays } from "./curriculum/generationSchedule";
 import { computeInstructionalGenerationTargetDate } from "./curriculum/instructionalCalendar";
 import { validateAndNormalizeBlocks, type ObjectiveIdScope } from "./curriculum/blockValidation";
 import { computeOutstandingCarryForward, attachCarryForwardProvenance } from "./curriculum/carryForward";
+import {
+  computeCarryForwardFromPacket,
+  loadMostRecentApprovedEvidencePacketBefore,
+} from "./curriculum/evidencePacketStore";
 import { buildStudentContext, type StudentContext } from "./dayPlans";
 import type {
   AssessmentEligibility,
@@ -121,7 +125,8 @@ interface ProposedDayOutcome {
   reason?: string;
 }
 
-async function getLatestProposedDay(
+/** Exported for reuse by evidencePackets.ts (build-order step 6): opening a packet needs the same "latest version for this date" lookup, and since an approved ProposedDay is never superseded (see decideGenerationAction), its latest version IS the approved one. */
+export async function getLatestProposedDay(
   familyId: string,
   studentId: string,
   date: string
@@ -140,24 +145,47 @@ async function getLatestProposedDay(
   return { id: doc.id, record: doc.data() as ProposedDay };
 }
 
+/** Satisfied structurally by both LearningBlock (step 5) and EvidenceBlockEntry (step 6) — whichever source loadOutstandingCarryForward actually used. */
+interface OutstandingCarryForwardBlock {
+  blockId: string;
+  subject: import("./types").Subject;
+  title: string;
+  objectiveIds: string[];
+  sourceQuarterCertificationId: string | null;
+  sourceWeeklyCertificationId: string | null;
+}
+
 interface OutstandingCarryForward {
   fromProposedDayId: string;
   fromDate: string;
-  blocks: LearningBlock[];
+  blocks: OutstandingCarryForwardBlock[];
 }
 
 /**
- * The most recent APPROVED day before `beforeDate` for this student, and
- * whichever of its required blocks are still "in_progress" (see
- * carryForward.ts's doc comment on why "not_started" never counts —
- * nothing writes anything else today, so this is a safe no-op in
- * practice until a future step actually records block completion).
+ * The real, step-6-authoritative signal: an approved EndOfDayEvidencePacket
+ * for the most recent prior school day, if the teacher actually closed it
+ * out — "what happened," not "what was planned." Falls back to step 5's
+ * original signal (ProposedDay's own blocks, which only ever reports
+ * "in_progress" and is effectively always empty in practice) only when no
+ * packet exists yet for the prior day at all — e.g. the day was approved
+ * but the teacher hasn't run closeout on it.
  */
 async function loadOutstandingCarryForward(
   familyId: string,
   studentId: string,
   beforeDate: string
 ): Promise<OutstandingCarryForward | null> {
+  const packetLookup = await loadMostRecentApprovedEvidencePacketBefore(familyId, studentId, beforeDate);
+  if (packetLookup) {
+    const outstanding = computeCarryForwardFromPacket(packetLookup.record.draft.blocks);
+    if (outstanding.length === 0) return null; // closed out, and genuinely nothing outstanding
+    return {
+      fromProposedDayId: packetLookup.record.sourceProposedDayId,
+      fromDate: packetLookup.record.date,
+      blocks: outstanding,
+    };
+  }
+
   const db = getFirestore();
   const snap = await db
     .collection("proposedDays")
