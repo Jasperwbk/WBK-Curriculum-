@@ -110,6 +110,22 @@ service cloud.firestore {
       allow create, update: if false;
     }
 
+    // Generalized teacher-approval primitive (functions/src/approvals.ts) —
+    // proposal -> pending review -> approve/reject -> committed version ->
+    // audit event. Written only by createProposal/approveProposal/
+    // rejectProposal (admin SDK, bypasses these rules); every existing
+    // ad hoc review flow (day plans, extracurriculars, placement
+    // submissions) still manages its own state for now.
+    match /proposals/{proposalId} {
+      allow read: if isTeacherInFamily(resource.data.familyId) ||
+        (resource.data.targetUserId != null && isOwner(resource.data.targetUserId));
+      allow write: if false;
+    }
+    match /auditEvents/{eventId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
     // Database-backed curriculum content (the "upload a new quarter" flow).
     // Written directly by the teacher's client after a local, deterministic
     // parse — no Cloud Function in the loop, same trust level as logs/tests.

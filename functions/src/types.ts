@@ -237,3 +237,57 @@ export interface UploadRecord {
   uploadedAt: Timestamp;
   category: string;
 }
+
+// --- Generalized teacher-approval primitive (Builder Guide §21) ---
+//
+// One conceptual flow, reused wherever an AI or student-generated change
+// needs a human in the loop before it's authoritative: proposal -> pending
+// review -> teacher edit/approve/reject -> committed version -> audit
+// event. Not yet adopted by the app's existing ad hoc versions of this
+// pattern (day-plan save, extracurricular confirm, placement-submission
+// review) — those keep working as they are for now. Its first real
+// consumer is quarter/weekly certification (build-order step 3); see
+// functions/src/approvals.ts for the helper functions that create,
+// approve, and reject a Proposal.
+export type ProposalKind =
+  | "quarterCertification"
+  | "weeklyCertification"
+  | "dayPlanPublication"
+  | "curriculumCorrection"
+  | "learnerLevelAdaptation"
+  | "hourApproval"
+  | "calendarChange"
+  | "extracurricular"
+  | "placementSubmission";
+
+export type ProposalStatus = "pending" | "approved" | "rejected";
+
+export interface Proposal<T = unknown> {
+  kind: ProposalKind;
+  familyId: string;
+  /** The student this proposal concerns, when it concerns just one. */
+  targetUserId: string | null;
+  status: ProposalStatus;
+  /** Whatever domain-specific fields this proposal kind carries — see the
+   *  commit() callback of the flow that produced it for the real shape. */
+  payload: T;
+  proposedByUid: string;
+  proposedByRole: Role;
+  proposedAt: Timestamp;
+  reviewedByUid?: string;
+  reviewedAt?: Timestamp;
+}
+
+export type AuditAction = "proposed" | "approved" | "rejected";
+
+export interface AuditEvent {
+  kind: ProposalKind;
+  action: AuditAction;
+  proposalId: string;
+  /** Duplicated from the proposal (rather than looked up) so rules can scope reads by family without an extra fetch. */
+  familyId: string;
+  actorUid: string;
+  actorRole: Role;
+  at: Timestamp;
+  summary: string;
+}
