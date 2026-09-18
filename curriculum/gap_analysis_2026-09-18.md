@@ -100,7 +100,43 @@ deployed**:
   PE, Historical Figure Coloring, or Ask-a-Teacher. See the full report
   delivered separately for the complete lifecycle and test coverage.
 
-Next up: step 5, only once you've reviewed step 4.
+- **Step 4.1 — done, awaiting your review.** Focused hardening pass on
+  step 4, before step 5: two fixes plus one architectural decision
+  record.
+
+  Recorded the decision that `proposedDays` is now authoritative for
+  governed WBK schooling (generation → review → approval → publication →
+  historical record); `dayPlans` stays legacy/freeform for
+  teacher-prompted one-offs, not migrated or synced — documented in both
+  files' top comments. Renaming/retiring `dayPlans` is deferred.
+
+  Fixed teacher-draft loss: a `ProposedDay` now carries a mutable
+  `draft` sub-object (title/summary/planText/jasperMessageEdited/
+  itineraryMode/revision/lastEditedByUid/lastEditedAt), seeded at
+  generation, editable via a new `saveProposedDayDraft` callable while
+  the proposal is unapproved. The original AI-generated fields are now
+  documented as permanent and never touched again. Optimistic-concurrency
+  protection (`checkDraftRevision`) guards both the draft save and
+  `approveProposedDay` itself — the latter re-checks the revision inside
+  its own transaction (not just a pre-check), so approval can never
+  silently commit over a newer saved draft. Required widening
+  `approvals.ts`'s `commit` callback to allow async, verified backward
+  compatible with every existing synchronous caller.
+
+  Replaced the old "+2 calendar days" generation target with a
+  school-day-aware calculation (`instructionalCalendar.ts`): Mon–Fri
+  instructional by default, explicit `DayDesignation` overrides win
+  (non-instructional days don't consume a lead slot; alternative-package
+  days do), exposed via a new read-only `getGenerationTargetDate`
+  callable the UI now calls instead of computing the date itself.
+
+  77 unit tests (up from 61). No Firestore rules/index changes needed —
+  `draft` is a new field inside the already Cloud-Function-only
+  `proposedDays` collection. `dayPlans.ts`/`PlanDayPage.tsx` untouched
+  (doc-comment-only change to the former). See the full report delivered
+  separately for the complete schema, lifecycle, and test coverage.
+
+Next up: step 5, only once you've reviewed step 4.1.
 
 ---
 
