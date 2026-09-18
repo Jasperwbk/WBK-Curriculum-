@@ -136,7 +136,47 @@ deployed**:
   (doc-comment-only change to the former). See the full report delivered
   separately for the complete schema, lifecycle, and test coverage.
 
-Next up: step 5, only once you've reviewed step 4.1.
+- **Step 5 — done, awaiting your review.** Replaced step 4's placeholder
+  `LearningBlockSummary` with a real block/objective model
+  (`LearningBlock` in `types.ts`): stable server-assigned objective ids
+  (`curriculum/objectiveId.ts` — deterministic, date/structure-derived,
+  never from display text; reuses `WEEK1_OBJECTIVES` catalog ids and real
+  mastery-record ids wherever they already exist), instructional stages,
+  required-vs-enrichment, same-day dependencies, a pure Strict/Flexible
+  eligibility function (`blockEligibility.ts`), carry-forward provenance
+  (`carryForward.ts` — deliberately only treats "in_progress" work as
+  outstanding, never "not_started," since nothing writes real completion
+  data yet), retrieval/remediation intent representation, and "Do Not Use
+  for Assessment" governance flags (`blockAssessmentExclusions`/
+  `dayAssessmentEligibility` on `ProposedDay`, set via a new
+  `setAssessmentEligibility` callable — never erases completion/
+  instructional time/historical record, only marks evidence ineligible
+  for a future adaptive-mastery consumer).
+
+  Generation now asks Claude for structured blocks (plain-text objective
+  descriptions + stage/minutes/required/same-block dependencies only —
+  never an id, never final ordering) and validates/defaults every field
+  server-side (`blockValidation.ts`), dropping individual malformed
+  entries and falling back to one minimal block if nothing survives —
+  never publishes garbage AI output. Same immutable-original/current-draft
+  split as every other generated field (`learningBlocks` top-level vs.
+  `draft.learningBlocks`) — not yet block-editable via `saveProposedDayDraft`
+  in this step (review UI only inspects). `ProposedDaysPage.tsx` now shows
+  each block's title/subject/objectives/stage/minutes/required-enrichment/
+  dependencies/locks/carry-forward, and a pre-existing display bug (an
+  approved day's list summary was reading the frozen original instead of
+  the actually-approved draft) was found and fixed in the same file.
+
+  137 unit tests (up from 77). One new Firestore composite index
+  (`proposedDays`: familyId/studentId/status/date desc, for the
+  carry-forward lookup) — no rules changes, since every new field lives
+  inside the already Cloud-Function-only `proposedDays` collection.
+  `dayPlans.ts`'s `generatePlan` and `PlanDayPage.tsx` untouched beyond an
+  additive `StudentContext` extension. See the full report delivered
+  separately for the complete schema, validation, eligibility, and test
+  coverage.
+
+Next up: step 6, only once you've reviewed step 5.
 
 ---
 
@@ -415,9 +455,11 @@ explicit approval regardless of local test results.
 4. ~~**Two-day-ahead daily generation**~~ — **done**, including Jasper
    Morning Message and Strict/Flexible itinerary; see
    `functions/src/proposedDays.ts`.
-5. **Day plans upgraded to block/objective-level structure**, including
-   carry-forward, dependencies, retrieval/remediation, and "Do Not Use for
-   Assessment."
+5. ~~**Day plans upgraded to block/objective-level structure**~~ — **done**,
+   including carry-forward, dependencies, retrieval/remediation, and "Do
+   Not Use for Assessment"; see `functions/src/types.ts`'s `LearningBlock`
+   and `functions/src/curriculum/{objectiveId,blockEligibility,
+   carryForward,blockValidation}.ts`.
 6. **End-of-day evidence + hour approval** — completed work flows back
    through teacher verification before becoming authoritative.
 7. **PE as a first-class component** — carefully migrated into the
