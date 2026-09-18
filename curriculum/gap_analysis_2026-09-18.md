@@ -38,19 +38,36 @@ deployed**:
   later work, not bundled into step 2. First real consumer will be step 3
   (quarter/weekly certification).
 
-- **Step 3 — done, awaiting your review.** Quarter + weekly certification
-  foundation and gates (`functions/src/certification.ts`,
-  `curriculum/certificationStatus.ts`/`certificationGate.ts`/
-  `contentHash.ts`/`certificationSchedule.ts`), built on the step-2
-  primitive. `generatePlan` now refuses to ground a new plan in curriculum
-  content that exists but isn't currently certified. Q1 will trip this the
-  moment it's deployed, until a teacher runs the new (idempotent,
-  additive) `bootstrapExistingCertifications` callable once — see the full
-  report delivered separately for the complete lifecycle, migration path,
-  and test coverage. Does not implement step 4 (two-day-ahead generation,
+- **Step 3 — superseded by step 3.1 below**, per your review: the original
+  cut certified per-kid, independently. Never deployed, so no migration
+  was needed to replace it.
+- **Step 3.1 — done, awaiting your review.** Certification corrected to a
+  FAMILY instructional-package boundary: one teacher action certifies the
+  whole family's quarter/week at once (`FamilyQuarterCertification`/
+  `FamilyWeeklyCertification`), while every child's own content hash stays
+  independently identifiable inside `childContent[]` — a governance
+  boundary only, not a content merge. A deterministic hash-of-hashes
+  (`contentHash.ts#hashFamilyPackage`) means any one child's material
+  changing invalidates the family certification, and `diffStaleKidKeys`
+  names exactly which child(ren) caused it. Single-teacher certification
+  preserved — no two-teacher requirement.
+
+  Also fixed the "no content = no gate" gap: `certificationGate.ts` is now
+  an explicit six-state machine (certified / blocked-uncertified /
+  blocked-missing-with-"Curriculum Assistance Required" / explicit
+  alternative-package / explicit non-instructional / not-yet-governed).
+  The last two (D/E) are reachable ONLY through a new, explicit
+  teacher-declared `DayDesignation` record (`designateDay` callable) —
+  never inferred from a missing file, verified by a dedicated test.
+
+  `bootstrapExistingCertifications` now creates family-level bootstrap
+  records (still per-child hashes preserved inside); not executed against
+  production. 34 unit tests (up from 19). See the full report delivered
+  separately for the complete lifecycle, traceability model, and test
+  coverage. Still does not implement step 4 (two-day-ahead generation,
   Jasper Morning Message, itinerary).
 
-Next up: step 4, only once you've reviewed step 3.
+Next up: step 4, only once you've reviewed step 3.1.
 
 ---
 
