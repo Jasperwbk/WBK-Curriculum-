@@ -79,7 +79,28 @@ deployed**:
   Still does not implement step 4 (two-day-ahead generation, Jasper
   Morning Message, itinerary).
 
-Next up: step 4, only once you've reviewed step 3.2.
+- **Step 4 — done, awaiting your review.** Two-day-ahead daily proposal
+  pipeline on top of the certification foundation: `certified quarter ->
+  certified week -> proposed day -> teacher review/edit -> teacher
+  approval -> published student day`. New `ProposedDay` schema
+  (`functions/src/proposedDays.ts`), per (family, student, date), reusing
+  `dayPlans.ts`'s certification-gate decision rather than duplicating it —
+  the existing freeform `dayPlans`/`generatePlan`/`PlanDayPage.tsx` flow
+  (field trips, one-offs) is completely untouched. Configurable lead time
+  (`Family.dayGenerationLeadDays`, default 2 — not hardcoded "48 hours").
+  Idempotent regeneration (unchanged source → skip; changed source → new
+  version, old one preserved; approved → never touched, even if forced).
+  Jasper Morning Message per student (`{generated, edited?}`, original
+  never discarded). Strict/Flexible itinerary mode (Claude suggests,
+  teacher picks at approval). `DayDesignation` respected — non-
+  instructional skips the Claude call entirely, alternative-package still
+  generates but grounds on the designation instead of ordinary curriculum.
+  New teacher UI (`ProposedDaysPage.tsx`) for generate/review/approve. 61
+  unit tests (up from 43). Does not build step 5's block/objective engine,
+  PE, Historical Figure Coloring, or Ask-a-Teacher. See the full report
+  delivered separately for the complete lifecycle and test coverage.
+
+Next up: step 5, only once you've reviewed step 4.
 
 ---
 
@@ -257,14 +278,25 @@ no general cross-source de-duplication model.
   nothing acts on it yet — no automation enforces the deadline. That's
   intentionally deferred to step 4 (two-day-ahead generation is where a
   deadline would actually matter).
-- **Two-day-ahead automatic daily generation** — today `generatePlan` only
-  runs when a teacher manually triggers it for a chosen date; there's no
-  background process keeping the next ~2 days pre-generated.
-- **Jasper Morning Message** — no such field or generation step exists on
-  `dayPlans` today.
-- **Strict vs. Flexible itinerary** — no such concept; a saved day plan is
-  just prose text today, not a set of discrete, orderable, lockable
-  blocks.
+- ~~**Two-day-ahead automatic daily generation**~~ — **partially done
+  (step 4).** `generateProposedDays` builds the deterministic lead-time
+  calculation, the idempotent generate/regenerate/skip/block decision, and
+  the callable/service itself — manually invoked (a teacher clicking
+  "Generate," or a future scheduled trigger calling the same callable).
+  The scheduled trigger itself (a Cloud Scheduler/cron job that calls it
+  automatically) is NOT built — deliberately deferred, no background
+  process exists yet.
+- ~~**Jasper Morning Message**~~ — **done (step 4).** `ProposedDay.
+  jasperMessage: {generated, edited?}`, one per student, generated
+  alongside the rest of the proposed day; teacher can override at
+  approval without losing the original.
+- ~~**Strict vs. Flexible itinerary**~~ — **done at the data/publication
+  level (step 4).** `ProposedDay.suggestedItineraryMode` (Claude's
+  suggestion) and `.itineraryMode` (teacher's choice, set only at
+  approval, reproducible historically). The actual dependency/eligibility
+  ENGINE that would make "flexible" mean something beyond a stored label
+  is step 5's block/objective work, not built yet — a saved day plan is
+  still one `planText` blob, not discrete blocks.
 - **Historical Figure Coloring** — new system entirely (see conflict §1.1
   for its relationship to the code it replaces).
 - **Carousel factoids** — not implemented.
@@ -344,8 +376,9 @@ explicit approval regardless of local test results.
    `functions/src/approvals.ts` + `proposals`/`auditEvents` collections.
 3. ~~**Quarter + weekly certification**~~ — **done.** First real consumer
    of #2; see `functions/src/certification.ts`.
-4. **Two-day-ahead daily generation**, including Jasper Morning Message and
-   Strict/Flexible itinerary.
+4. ~~**Two-day-ahead daily generation**~~ — **done**, including Jasper
+   Morning Message and Strict/Flexible itinerary; see
+   `functions/src/proposedDays.ts`.
 5. **Day plans upgraded to block/objective-level structure**, including
    carry-forward, dependencies, retrieval/remediation, and "Do Not Use for
    Assessment."
