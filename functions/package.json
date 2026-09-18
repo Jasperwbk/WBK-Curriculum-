@@ -15,7 +15,8 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "lint": "eslint --ext .ts src",
-    "test": "tsc --noEmit"
+    "test": "tsc --noEmit",
+    "test:unit": "npm run build && node --test $(find lib -name '*.test.js')"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

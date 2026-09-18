@@ -126,6 +126,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Quarter + weekly certification (build-order step 3), written only by
+    // certifyQuarter/certifyWeek/bootstrapExistingCertifications
+    // (functions/src/certification.ts, via the approval primitive above —
+    // admin SDK, bypasses these rules). Teacher-only read, same trust level
+    // as curriculumContent — these records are a curriculum-readiness
+    // concern, not a student's own record, so no owner-read clause.
+    match /quarterCertifications/{certId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+    match /weeklyCertifications/{certId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
+
     // Database-backed curriculum content (the "upload a new quarter" flow).
     // Written directly by the teacher's client after a local, deterministic
     // parse — no Cloud Function in the loop, same trust level as logs/tests.

@@ -46,6 +46,8 @@ export interface Family {
   familyName: string;
   schoolYear: SchoolYear;
   memberIds: string[]; // all teacher + student accounts in the family
+  /** Optional — see WeeklyCertificationSchedule. Undefined means use the default. */
+  weeklyCertificationSchedule?: WeeklyCertificationSchedule;
 }
 
 export interface UserProfile {
@@ -290,4 +292,84 @@ export interface AuditEvent {
   actorRole: Role;
   at: Timestamp;
   summary: string;
+}
+
+// --- Quarter + weekly certification (Builder Guide §4-5, §21; build-order
+// step 3) ---
+//
+// Wraps the existing curriculumContent (Firestore) / bundled static Q1
+// files with an explicit teacher-certification gate before generatePlan
+// may ground a NEW day plan in it. Built on the approval primitive above —
+// certifying a quarter or week IS approving a proposal of the matching
+// kind; these two collections hold the resulting committed records.
+//
+// Scoped per (familyId, kidKey, quarter[, week]) rather than per family —
+// that's the actual granularity curriculum content is stored and uploaded
+// at today (one curriculumContent doc per kid per quarter), so certifying
+// "Millaray's Q1" and "Makaio's Q1" are genuinely separate acts.
+//
+// No mutable "status" field: a record is an immutable, permanent statement
+// that a specific content hash was certified by a specific teacher at a
+// specific time (never edited or deleted, so certification history is
+// always fully preserved). Whether a certification is *currently valid*
+// is computed on demand by comparing its certifiedContentHash against the
+// current content's hash (see contentHash.ts / certificationStatus.ts) —
+// if they no longer match, the content changed materially since
+// certification and the most recent record is simply stale, without
+// needing to be mutated. A new certification is a new document.
+export type CertificationSource = "reviewed" | "bootstrap";
+// "reviewed"  — a teacher looked at this content and certified it directly.
+// "bootstrap" — a teacher retroactively certified pre-existing content
+//               (e.g. Q1, already live before this certification system
+//               existed) via bootstrapExistingCertifications, so nothing
+//               already working breaks the moment the gate goes live.
+//               Still a real teacher action with a real uid/timestamp/audit
+//               event — just honestly flagged as retroactive, not a
+//               genuine line-by-line review.
+
+export interface QuarterCertification {
+  familyId: string;
+  kidKey: PlacementKidKey;
+  quarter: Quarter;
+  /** Hash of the quarter's shape only (week numbers + titles) — see
+   *  contentHash.ts#hashQuarterShape. Deliberately excludes each week's
+   *  rawContent/hours, which are certified independently at the weekly
+   *  level, so refining one week's prose doesn't force re-certifying the
+   *  whole quarter. */
+  certifiedContentHash: string;
+  certifiedByUid: string;
+  certifiedAt: Timestamp;
+  source: CertificationSource;
+}
+
+export interface WeeklyCertification {
+  familyId: string;
+  kidKey: PlacementKidKey;
+  quarter: Quarter;
+  week: number;
+  /** The QuarterCertification current at the moment this week was
+   *  certified — a week can't be certified while its quarter isn't. */
+  quarterCertificationId: string;
+  /** Hash of this week's actual material content — see
+   *  contentHash.ts#hashWeekContent. */
+  certifiedContentHash: string;
+  certifiedByUid: string;
+  certifiedAt: Timestamp;
+  source: CertificationSource;
+}
+
+/**
+ * Configurable deadlines for the weekly review/certify cadence (not yet
+ * enforced by any automation — that arrives with build-order step 4's
+ * two-day-ahead generation; this just makes the schedule data instead of
+ * a hardcoded assumption). Falls back to
+ * DEFAULT_WEEKLY_CERTIFICATION_SCHEDULE (Friday 17:00 review / Sunday
+ * 20:00 certify) when a family hasn't set one.
+ */
+export interface WeeklyCertificationSchedule {
+  /** 0 = Sunday .. 6 = Saturday. */
+  reviewByDayOfWeek: number;
+  reviewByTime: string; // "HH:mm", 24h local time
+  certifyByDayOfWeek: number;
+  certifyByTime: string;
 }

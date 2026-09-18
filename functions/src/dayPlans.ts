@@ -6,6 +6,8 @@ import { requireCaller, requireTeacher } from "./util/auth";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getQuarterAndWeek, loadWeekContent } from "./curriculum/loadCurriculumContent";
+import { getWeeklyCertificationStatus } from "./curriculum/certificationStatus";
+import { evaluateCertificationGate } from "./curriculum/certificationGate";
 import { inferKidKey } from "./curriculum/placementTestItems";
 import type { Family, MasteryRecord, Subject, UserProfile } from "./types";
 
@@ -18,10 +20,17 @@ interface GeneratePlanRequest {
   prompt: string; // teacher's free-text description of the day
 }
 
+/** The shape Claude is asked to return — certifications (below) is added separately, not by Claude. */
 interface GeneratedPlan {
   title: string;
   summary: string;
   planText: string;
+}
+
+interface StudentContext {
+  contextLine: string;
+  /** The WeeklyCertification this context's curriculum-content grounding was based on, when there was one. */
+  weeklyCertificationId: string | null;
 }
 
 /**
@@ -31,13 +40,19 @@ interface GeneratedPlan {
  * baseline. Falls back to a name-only line if the
  * student can't be resolved (unknown id, non-family-member, etc.) — the
  * generator still works with less context rather than failing outright.
+ *
+ * Throws failed-precondition if the resolved week HAS curriculum content
+ * but that content isn't currently certified (build-order step 3's
+ * certification gate — see certificationGate.ts) — generatePlan refuses to
+ * ground a new plan in uncertified/stale content rather than silently
+ * using it. A week with no content at all is unaffected (nothing to gate).
  */
 async function buildStudentContext(
   studentId: string,
   familyId: string,
   schoolYearStart: Date,
   planDate: Date
-): Promise<string | null> {
+): Promise<StudentContext | null> {
   const db = getFirestore();
   const snap = await db.collection("users").doc(studentId).get();
   if (!snap.exists) return null;
@@ -86,6 +101,7 @@ async function buildStudentContext(
     );
   }
 
+  let weeklyCertificationId: string | null = null;
   const kidKey = inferKidKey(profile.displayName);
   if (kidKey) {
     const quarterAndWeek = getQuarterAndWeek(schoolYearStart, planDate);
@@ -93,6 +109,24 @@ async function buildStudentContext(
       ? await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week)
       : null;
     if (weekContent && quarterAndWeek) {
+      const weekStatus = await getWeeklyCertificationStatus(
+        familyId,
+        kidKey,
+        quarterAndWeek.quarter,
+        quarterAndWeek.week
+      );
+      const gate = evaluateCertificationGate({
+        hasContent: true,
+        weekStatus: weekStatus.status,
+        kidKey,
+        quarter: quarterAndWeek.quarter,
+        week: quarterAndWeek.week,
+      });
+      if (!gate.allow) {
+        throw new HttpsError("failed-precondition", gate.reason);
+      }
+      weeklyCertificationId = weekStatus.latest?.id ?? null;
+
       lines.push(
         `  --- This week's actual curriculum content (${quarterAndWeek.quarter.toUpperCase()} Week ${quarterAndWeek.week}), ` +
           `verbatim from the real curriculum file. Base today's specific topics/objectives/activities on this ` +
@@ -102,7 +136,7 @@ async function buildStudentContext(
     }
   }
 
-  return lines.join("\n");
+  return { contextLine: lines.join("\n"), weeklyCertificationId };
 }
 
 function formatObjectives(records: MasteryRecord[]): string {
@@ -171,6 +205,7 @@ export const generatePlan = onCall<GeneratePlanRequest>(
     const ids = Array.isArray(studentIds) ? studentIds.filter((id) => typeof id === "string") : [];
 
     let studentContextBlock = "";
+    const certifications: { studentId: string; weeklyCertificationId: string }[] = [];
     if (ids.length > 0) {
       const db = getFirestore();
       const familyId = caller.profile.familyId;
@@ -182,10 +217,15 @@ export const generatePlan = onCall<GeneratePlanRequest>(
         const contexts = await Promise.all(
           ids.map((id) => buildStudentContext(id, familyId, schoolYearStart, planDate))
         );
-        const validContexts = contexts.filter((c): c is string => c !== null);
+        const validContexts = contexts.filter((c): c is StudentContext => c !== null);
         if (validContexts.length > 0) {
-          studentContextBlock = `\n\nPer-student context (use this to route around what each kid is still building, not just their name):\n${validContexts.join("\n")}`;
+          studentContextBlock = `\n\nPer-student context (use this to route around what each kid is still building, not just their name):\n${validContexts.map((c) => c.contextLine).join("\n")}`;
         }
+        contexts.forEach((context, i) => {
+          if (context?.weeklyCertificationId) {
+            certifications.push({ studentId: ids[i], weeklyCertificationId: context.weeklyCertificationId });
+          }
+        });
       }
     }
 
@@ -267,6 +307,7 @@ export const generatePlan = onCall<GeneratePlanRequest>(
       title: typeof parsed.title === "string" ? parsed.title : "Day plan",
       summary: typeof parsed.summary === "string" ? parsed.summary : "",
       planText: typeof parsed.planText === "string" ? parsed.planText : "",
+      certifications,
     };
   }
 );

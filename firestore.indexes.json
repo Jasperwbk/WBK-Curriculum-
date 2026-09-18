@@ -49,6 +49,27 @@
         { "fieldPath": "familyId", "order": "ASCENDING" },
         { "fieldPath": "uploadedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "quarterCertifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "kidKey", "order": "ASCENDING" },
+        { "fieldPath": "quarter", "order": "ASCENDING" },
+        { "fieldPath": "certifiedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "weeklyCertifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "kidKey", "order": "ASCENDING" },
+        { "fieldPath": "quarter", "order": "ASCENDING" },
+        { "fieldPath": "week", "order": "ASCENDING" },
+        { "fieldPath": "certifiedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

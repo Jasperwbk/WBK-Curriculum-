@@ -76,8 +76,12 @@ export function PlanDayPage() {
       setTitle(res.data.title);
       setSummary(res.data.summary);
       setPlanText(res.data.planText);
-    } catch {
-      setError("Couldn't generate a plan. Try again.");
+    } catch (err) {
+      // Surfaces a specific backend message when there is one (e.g. the
+      // certification gate explaining exactly which kid/week needs
+      // certifying) instead of always showing a generic failure.
+      const message = err instanceof Error && err.message ? err.message : null;
+      setError(message ?? "Couldn't generate a plan. Try again.");
     } finally {
       setGenerating(false);
     }
