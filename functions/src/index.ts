@@ -26,4 +26,5 @@ export {
   approveEvidencePacket,
   approveEvidencePackets,
   reconcileEvidencePacket,
+  recordHistoricalFigureRetention,
 } from "./evidencePackets";

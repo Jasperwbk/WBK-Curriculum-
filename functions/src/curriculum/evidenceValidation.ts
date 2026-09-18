@@ -280,3 +280,15 @@ export function mergeBlockEdits(
 
   return { ok: true, blocks: merged };
 }
+
+/**
+ * Validates a teacher-submitted Historical Figure Coloring retention
+ * observation (build-order step 8, requirement 10) — a 1-10 integer,
+ * same "reject with a clear error, don't silently default" philosophy as
+ * the rest of this file (a real teacher input, not AI output). Pure and
+ * standalone since this field lives outside `EvidenceBlockEntry`
+ * entirely — see types.ts's HistoricalFigureClosingEvidence.
+ */
+export function isValidRetentionObservation(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 10;
+}

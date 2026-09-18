@@ -22,10 +22,18 @@ import {
   computeCarryForwardFromPacket,
   loadMostRecentApprovedEvidencePacketBefore,
 } from "./curriculum/evidencePacketStore";
+import { HISTORICAL_FIGURE_CATALOG, getUpcomingContextTags } from "./curriculum/historicalFigureCatalog";
+import {
+  ART_COMPLEXITY_BAND_BY_KID,
+  buildRecallQuestion,
+  buildShowAndTellPrompt,
+  selectHistoricalFigure,
+} from "./curriculum/historicalFigureSelector";
 import { buildStudentContext, type StudentContext } from "./dayPlans";
 import type {
   AssessmentEligibility,
   Family,
+  HistoricalFigureClosingPlan,
   ItineraryMode,
   JasperMessage,
   LearningBlock,
@@ -246,6 +254,7 @@ interface GeneratedContent {
   jasperMessage: string;
   suggestedItineraryMode: ItineraryMode;
   learningBlocks: LearningBlock[];
+  historicalFigureClosing: HistoricalFigureClosingPlan | null;
 }
 
 /**
@@ -271,6 +280,7 @@ async function generateOrdinaryDayContent(params: {
   sourceQuarterCertificationId: string | null;
   sourceWeeklyCertificationId: string | null;
   outstandingCarryForward: OutstandingCarryForward | null;
+  recentHistoricalFigureIds: readonly string[];
 }): Promise<GeneratedContent> {
   const client = new Anthropic({ apiKey: params.apiKey });
 
@@ -438,6 +448,13 @@ async function generateOrdinaryDayContent(params: {
     params.sourceWeeklyCertificationId
   );
 
+  // Build-order step 8: Historical Figure Coloring closing activity —
+  // fully deterministic (see historicalFigureSelector.ts's doc comment
+  // on why no AI call is involved), computed independently of whatever
+  // Claude returned above. Never tied to a LearningBlock/Subject, so it
+  // can never affect instructional hours or the 28 hrs/week requirement.
+  const historicalFigureClosing = buildHistoricalFigureClosing(params);
+
   return {
     title: typeof parsed.title === "string" ? parsed.title : "Proposed day",
     summary: typeof parsed.summary === "string" ? parsed.summary : "",
@@ -445,7 +462,68 @@ async function generateOrdinaryDayContent(params: {
     jasperMessage: typeof parsed.jasperMessage === "string" ? parsed.jasperMessage : "",
     suggestedItineraryMode: parsed.suggestedItineraryMode === "strict" ? "strict" : "flexible",
     learningBlocks,
+    historicalFigureClosing,
   };
+}
+
+/**
+ * Selects today's historical figure and builds the age-differentiated
+ * closing prompts, or returns null when there's no resolvable kidKey
+ * (e.g. a student whose display name doesn't match any PlacementKidKey —
+ * same defensive posture as every other kidKey-dependent feature in this
+ * file: degrade to "not available" rather than guessing).
+ */
+function buildHistoricalFigureClosing(params: {
+  date: string;
+  context: StudentContext;
+  recentHistoricalFigureIds: readonly string[];
+}): HistoricalFigureClosingPlan | null {
+  const { kidKey, quarterAndWeek } = params.context;
+  if (!kidKey) return null;
+
+  const contextTags = getUpcomingContextTags(quarterAndWeek?.week ?? null);
+  const selection = selectHistoricalFigure({
+    catalog: HISTORICAL_FIGURE_CATALOG,
+    kidKey,
+    date: params.date,
+    recentFigureIds: params.recentHistoricalFigureIds,
+    contextTags,
+  });
+  if (!selection) return null;
+
+  return {
+    figureId: selection.figure.id,
+    selectionReason: selection.selectionReason,
+    artComplexityBand: ART_COMPLEXITY_BAND_BY_KID[kidKey],
+    showAndTellPrompt: buildShowAndTellPrompt(selection.figure, kidKey),
+    recallQuestion: buildRecallQuestion(selection.figure, kidKey),
+  };
+}
+
+/**
+ * Every figureId this student has actually had on a recent APPROVED day
+ * — the anti-repetition signal (build-order step 8). Only approved days
+ * count as real history a kid experienced; an unapproved/superseded
+ * proposal never happened, so it never constrains a later pick. Reuses
+ * the existing (familyId, studentId, status, date) composite index
+ * (proposedDays.ts's other queries already rely on it) — no new index
+ * needed. `limit` bounds both the query cost and how far back "recent"
+ * looks; 15 is comfortably larger than a school week without scanning a
+ * whole quarter's history on every generation call.
+ */
+async function loadRecentHistoricalFigureIds(familyId: string, studentId: string, limit = 15): Promise<string[]> {
+  const db = getFirestore();
+  const snap = await db
+    .collection("proposedDays")
+    .where("familyId", "==", familyId)
+    .where("studentId", "==", studentId)
+    .where("status", "==", "approved")
+    .orderBy("date", "desc")
+    .limit(limit)
+    .get();
+  return snap.docs
+    .map((d) => (d.data() as ProposedDay).historicalFigureClosing?.figureId)
+    .filter((id): id is string => typeof id === "string");
 }
 
 /**
@@ -577,10 +655,14 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
               jasperMessage: "",
               suggestedItineraryMode: "flexible",
               learningBlocks: [],
+              historicalFigureClosing: null,
             };
           } else {
             outstandingCarryForward = await loadOutstandingCarryForward(familyId, studentId, date);
-            const studentSnap = await db.collection("users").doc(studentId).get();
+            const [studentSnap, recentHistoricalFigureIds] = await Promise.all([
+              db.collection("users").doc(studentId).get(),
+              loadRecentHistoricalFigureIds(familyId, studentId),
+            ]);
             const studentName = (studentSnap.data() as UserProfile | undefined)?.displayName ?? "the student";
             generated = await generateOrdinaryDayContent({
               apiKey: anthropicApiKey.value(),
@@ -592,6 +674,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
               sourceQuarterCertificationId: context.quarterCertificationId,
               sourceWeeklyCertificationId: context.weeklyCertificationId,
               outstandingCarryForward,
+              recentHistoricalFigureIds,
             });
           }
 
@@ -620,6 +703,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
             jasperMessage: dayType === "nonInstructional" ? null : ({ generated: generated.jasperMessage } as JasperMessage),
             suggestedItineraryMode: dayType === "nonInstructional" ? null : generated.suggestedItineraryMode,
             learningBlocks: generated.learningBlocks,
+            historicalFigureClosing: generated.historicalFigureClosing,
             carryForwardNotes: outstandingCarryForward
               ? [
                   `Carrying forward ${outstandingCarryForward.blocks.length} incomplete required item(s) from ` +
@@ -635,6 +719,7 @@ export const generateProposedDays = onCall<GenerateProposedDaysRequest>({ secret
               planText: generated.planText,
               itineraryMode: generated.suggestedItineraryMode ?? "flexible",
               learningBlocks: generated.learningBlocks,
+              historicalFigureClosing: generated.historicalFigureClosing,
               revision: 0,
               lastEditedByUid: caller.uid,
               lastEditedAt: generatedAt,
@@ -787,6 +872,9 @@ export const saveProposedDayDraft = onCall<SaveProposedDayDraftRequest>(async (r
       // carried through unchanged from whatever's currently saved, same
       // as every other field this call doesn't take as a parameter.
       learningBlocks: doc.draft.learningBlocks,
+      // Likewise not yet independently editable (build-order step 8) —
+      // carried through unchanged, same reasoning as learningBlocks above.
+      historicalFigureClosing: doc.draft.historicalFigureClosing,
       revision: newRevision,
       lastEditedByUid: caller.uid,
       lastEditedAt: Timestamp.now(),

@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import {
   useProposedDays,
+  type HistoricalFigureClosingPlan,
   type InstructionalStage,
   type ItineraryMode,
   type LearningBlock,
@@ -391,7 +392,10 @@ export function ProposedDaysPage() {
                   <p style={{ color: "var(--text-secondary)" }}>{plan.draft.summary}</p>
 
                   {viewingBlocksId === plan.id && (
-                    <BlockList blocks={[...plan.draft.learningBlocks].sort((a, b) => a.order - b.order)} />
+                    <>
+                      <BlockList blocks={[...plan.draft.learningBlocks].sort((a, b) => a.order - b.order)} />
+                      <HistoricalFigureClosingSummary closing={plan.draft.historicalFigureClosing} />
+                    </>
                   )}
 
                   {isReviewing && draft && (
@@ -571,5 +575,32 @@ function BlockList({ blocks }: { blocks: LearningBlock[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Read-only review of the day's Historical Figure Closing (build-order
+ * step 8, requirement: "Teacher must see the selected person and
+ * generated contextual material before publication"). Purely informational
+ * here — the figure/prompts are frozen at generation and not yet
+ * independently editable via saveProposedDayDraft, same status as
+ * BlockList's structured blocks above. `null` for a nonInstructional day.
+ */
+function HistoricalFigureClosingSummary({ closing }: { closing: HistoricalFigureClosingPlan | null }) {
+  if (!closing) return null;
+  return (
+    <div
+      className="rounded-md border px-3 py-2 text-xs space-y-1"
+      style={{ borderColor: "var(--border)", background: "var(--page)" }}
+    >
+      <div className="font-medium" style={{ color: "var(--text-primary)" }}>
+        Closing: Historical Figure Coloring
+      </div>
+      <div style={{ color: "var(--text-secondary)" }}>Figure: {closing.figureId}</div>
+      <div style={{ color: "var(--text-muted)" }}>{closing.selectionReason}</div>
+      <div style={{ color: "var(--text-muted)" }}>Art complexity: {closing.artComplexityBand}</div>
+      <div style={{ color: "var(--text-secondary)" }}>Show and tell: {closing.showAndTellPrompt}</div>
+      <div style={{ color: "var(--text-secondary)" }}>Recall question: {closing.recallQuestion}</div>
+    </div>
   );
 }

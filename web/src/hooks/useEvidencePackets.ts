@@ -81,6 +81,17 @@ export interface ProjectionState {
   error?: string;
 }
 
+/** Mirrors functions/src/types.ts's HistoricalFigureClosingEvidence (build-order step 8). */
+export interface HistoricalFigureClosingEvidence {
+  figureId: string;
+  completed: boolean;
+  retentionObservation: number | null;
+  teacherNote?: string;
+  preservedArtwork?: ArtifactReference;
+  recordedByUid?: string;
+  recordedAt?: Timestamp;
+}
+
 export interface EvidencePacket {
   id: string;
   familyId: string;
@@ -96,6 +107,7 @@ export interface EvidencePacket {
   approvedAt?: Timestamp;
   hoursProjection: ProjectionState;
   masteryProjection: ProjectionState;
+  historicalFigureClosing?: HistoricalFigureClosingEvidence | null;
 }
 
 /** Every evidencePackets doc for the family, newest date first. */

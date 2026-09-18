@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
-import { mergeBlockEdits } from "./evidenceValidation";
+import { isValidRetentionObservation, mergeBlockEdits } from "./evidenceValidation";
 import type { EvidenceBlockEntry } from "../types";
 
 const NOW = Timestamp.fromDate(new Date("2026-09-21T12:00:00Z"));
@@ -265,4 +265,25 @@ test("a photo/artifact is never required for routine schoolwork — omitting art
     NOW
   );
   assert.equal(result.ok, true);
+});
+
+// --- isValidRetentionObservation (build-order step 8) ---
+
+test("isValidRetentionObservation accepts every whole number from 1 to 10", () => {
+  for (let i = 1; i <= 10; i++) assert.equal(isValidRetentionObservation(i), true);
+});
+
+test("isValidRetentionObservation rejects 0 and 11 — out of range on either side", () => {
+  assert.equal(isValidRetentionObservation(0), false);
+  assert.equal(isValidRetentionObservation(11), false);
+});
+
+test("isValidRetentionObservation rejects non-integers", () => {
+  assert.equal(isValidRetentionObservation(5.5), false);
+});
+
+test("isValidRetentionObservation rejects non-numbers entirely", () => {
+  assert.equal(isValidRetentionObservation("7"), false);
+  assert.equal(isValidRetentionObservation(null), false);
+  assert.equal(isValidRetentionObservation(undefined), false);
 });

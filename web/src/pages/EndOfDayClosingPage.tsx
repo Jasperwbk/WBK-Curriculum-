@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { functions } from "../lib/firebase";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { db, functions } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { useProposedDays } from "../hooks/useProposedDays";
@@ -77,6 +78,11 @@ const reconcileEvidencePacketFn = httpsCallable<
   { packetId: string; hoursStatus: string; masteryStatus: string }
 >(functions, "reconcileEvidencePacket");
 
+const recordHistoricalFigureRetentionFn = httpsCallable<
+  { packetId: string; retentionObservation: number; teacherNote?: string },
+  { packetId: string }
+>(functions, "recordHistoricalFigureRetention");
+
 /** The fields a teacher actually edits for one evidence item — recordedByUid/recordedAt are always server-set (evidenceValidation.ts ignores whatever the client sends for them), so the local editing state never needs to fabricate them. */
 type EvidenceDraftItem = Omit<ObjectiveEvidenceItem, "recordedByUid" | "recordedAt">;
 
@@ -134,6 +140,8 @@ export function EndOfDayClosingPage() {
   const [batchApproving, setBatchApproving] = useState(false);
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
   const [newEvidenceByBlock, setNewEvidenceByBlock] = useState<Record<string, Partial<EvidenceDraftItem>>>({});
+  const [retentionDrafts, setRetentionDrafts] = useState<Record<string, { score: string; note: string }>>({});
+  const [savingRetentionId, setSavingRetentionId] = useState<string | null>(null);
 
   function studentName(uid: string): string {
     return students.find((s) => s.uid === uid)?.displayName ?? "Unknown student";
@@ -300,6 +308,29 @@ export function EndOfDayClosingPage() {
     }
   }
 
+  async function handleSaveRetention(packetId: string) {
+    const draft = retentionDrafts[packetId];
+    const score = Number(draft?.score);
+    if (!Number.isInteger(score) || score < 1 || score > 10) {
+      setError("Retention observation must be a whole number from 1 to 10.");
+      return;
+    }
+    setSavingRetentionId(packetId);
+    setError(null);
+    try {
+      await recordHistoricalFigureRetentionFn({
+        packetId,
+        retentionObservation: score,
+        ...(draft?.note?.trim() ? { teacherNote: draft.note.trim() } : {}),
+      });
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : null;
+      setError(message ?? "Couldn't save the retention observation. Try again.");
+    } finally {
+      setSavingRetentionId(null);
+    }
+  }
+
   async function handleBatchApprove() {
     setBatchApproving(true);
     setError(null);
@@ -334,6 +365,8 @@ export function EndOfDayClosingPage() {
             approved, eligible evidence updates mastery.
           </p>
         </div>
+
+        {profile && <FamilyClosingWordsEditor familyId={profile.familyId} />}
 
         <label className="block text-sm space-y-1">
           <span style={{ color: "var(--text-secondary)" }}>Date</span>
@@ -640,6 +673,65 @@ export function EndOfDayClosingPage() {
                       );
                     })}
 
+                    {packet?.historicalFigureClosing && (
+                      <div
+                        className="rounded-md border px-3 py-2 space-y-2"
+                        style={{ borderColor: "var(--border)", background: "var(--page)" }}
+                      >
+                        <div className="font-medium text-xs" style={{ color: "var(--text-primary)" }}>
+                          Closing: Historical Figure Coloring — {packet.historicalFigureClosing.figureId}
+                        </div>
+                        {packet.historicalFigureClosing.completed ? (
+                          <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                            Retention observation recorded: {packet.historicalFigureClosing.retentionObservation}/10
+                            {packet.historicalFigureClosing.teacherNote ? ` — "${packet.historicalFigureClosing.teacherNote}"` : ""}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <label className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                              Retention (1-10):
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={retentionDrafts[packet.id]?.score ?? ""}
+                              onChange={(e) =>
+                                setRetentionDrafts((cur) => ({
+                                  ...cur,
+                                  [packet.id]: { ...cur[packet.id], score: e.target.value },
+                                }))
+                              }
+                              className="w-16 rounded-md border px-1.5 py-1 text-xs"
+                              style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Note (optional)"
+                              value={retentionDrafts[packet.id]?.note ?? ""}
+                              onChange={(e) =>
+                                setRetentionDrafts((cur) => ({
+                                  ...cur,
+                                  [packet.id]: { ...cur[packet.id], note: e.target.value },
+                                }))
+                              }
+                              className="rounded-md border px-1.5 py-1 text-xs flex-1 min-w-[8rem]"
+                              style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveRetention(packet.id)}
+                              disabled={savingRetentionId === packet.id}
+                              className="rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-60"
+                              style={{ borderColor: "var(--series-1)", color: "var(--series-1)" }}
+                            >
+                              {savingRetentionId === packet.id ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
                       <input
                         type="checkbox"
@@ -696,6 +788,97 @@ export function EndOfDayClosingPage() {
         </ul>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * The last step of the locked closing sequence (build-order step 8) —
+ * the family's own Kindred motto/prayer/closing words. Deliberately
+ * NEVER given a default or AI-generated placeholder (the exact wording
+ * was never supplied and must not be invented — see types.ts's
+ * Family.closingWords doc comment); this is the "configurable/family-
+ * authored closing element" the spec calls for, a plain direct write to
+ * the family's own doc using the same teacher-write permission every
+ * other family setting already has.
+ */
+function FamilyClosingWordsEditor({ familyId }: { familyId: string }) {
+  const [closingWords, setClosingWords] = useState<string | undefined>(undefined);
+  const [draft, setDraft] = useState("");
+  const [editing, setEditingWords] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, "families", familyId), (snap) => {
+      const value = (snap.data()?.closingWords as string | undefined) ?? "";
+      setClosingWords(value);
+      setDraft(value);
+    });
+  }, [familyId]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "families", familyId), { closingWords: draft.trim() });
+      setEditingWords(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (closingWords === undefined) return null;
+
+  return (
+    <div
+      className="rounded-lg border px-3 py-2 text-sm space-y-1"
+      style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+          Closing: family words
+        </span>
+        {!editing && (
+          <button onClick={() => setEditingWords(true)} className="text-xs font-medium" style={{ color: "var(--series-1)" }}>
+            {closingWords ? "Edit" : "Add"}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            placeholder="Your family's own closing motto/prayer — never invented for you."
+            className="w-full rounded-md border px-2 py-1 text-xs"
+            style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--page)" }}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-60"
+              style={{ borderColor: "var(--series-1)", color: "var(--series-1)" }}
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+            <button
+              onClick={() => {
+                setDraft(closingWords);
+                setEditingWords(false);
+              }}
+              className="rounded-md border px-2 py-1 text-xs font-medium"
+              style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p style={{ color: closingWords ? "var(--text-secondary)" : "var(--text-muted)" }}>
+          {closingWords || "Not set yet — add your family's own closing words whenever you're ready."}
+        </p>
+      )}
+    </div>
   );
 }
 

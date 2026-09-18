@@ -451,7 +451,128 @@ deployed**:
   its ability to feed the mastery pipeline. No Firestore rules/index
   changes. Not deployed.
 
-Next up: step 8, once you've reviewed this final step 7 state.
+- **Step 8 — done, awaiting your review.** Historical Figure Coloring —
+  the daily closing system — replacing the retired subject-ring color-
+  sheet rotation (`colorSheetRotation.ts`, confirmed still unwired from
+  any runtime path, now with a regression test proving it).
+
+  Data model: extended (not replaced) the step 1 contract from
+  `curriculum/historicalFigureSelector.ts` — `HistoricalFigure` moved
+  into `types.ts` (types.ts never imports from `curriculum/*`, matching
+  every other domain's schema placement) and gained `whyItMatters`,
+  `toddlerAppropriate`, and a separate `artwork` provenance object
+  distinct from the historical-fact `provenance` (requirement 7:
+  "historical facts and artwork provenance are separate concerns"). A new
+  hand-authored `curriculum/historicalFigureCatalog.ts` seeds 20 REAL
+  historical people spanning Indigenous/pre-colonial (Squanto, Pocahontas,
+  Sequoyah, Sacagawea), colonial/Revolutionary (Franklin, Wheatley,
+  Revere, Washington, Lafayette), early US/expansion (Jefferson, Madison,
+  Johnny Appleseed), Civil War/Reconstruction (Lincoln, Tubman,
+  Douglass), industrial/modern (Edison, the Wright brothers), and people
+  outside the modern US intersecting American history (Lafayette, Leif
+  Erikson, Columbus) — no fabricated people, no invented provenance.
+  Every entry's artwork is honestly `unavailable`/`unknown_unverified` —
+  no image pipeline exists, nothing is scraped or assumed reusable
+  (requirements 6-7); `isArtworkApprovedForPrinting` is the one gate that
+  would ever let a real asset through, and it hard-refuses an unknown/
+  unverified rights status regardless of availability.
+
+  DELIBERATE DECISION: no AI call is involved anywhere in this feature.
+  Both the figure and the show-and-tell/recall prompt text are fully
+  deterministic — the figure comes from a pure, seeded weighted-selection
+  algorithm (`historicalFigureSelector.ts#selectHistoricalFigure`,
+  `hashText(date+kidKey)` as the deterministic seed), and prompts are
+  template text built from the catalog entry's own fields. This is a
+  stricter reading of "the AI may draft an age-appropriate prompt" (a
+  permission, not a requirement) chosen specifically to make the
+  "don't fabricate people / don't let the AI invent provenance"
+  instruction structurally impossible to violate, not just prompted
+  against.
+
+  Selection: locked hybrid strategy — variety (base weight) plus
+  upcoming-context weighting (+2 per matching relevance tag, using a new
+  `Q1_FALL_WEEK_RELEVANCE_TAGS` table for the current+next week's theme —
+  real "upcoming," not just "current"), with anti-repetition sourced from
+  the student's real approved-day history (`loadRecentHistoricalFigureIds`
+  in `proposedDays.ts`, reusing the EXISTING `(familyId, studentId,
+  status, date)` composite index — no new index needed). Never collapses
+  to "always the one thematic match" (weighting only ever adds on top of
+  the variety floor) and never crashes/empties the pool (falls back to
+  the full catalog if every figure has recently been shown).
+
+  Age differentiation: Maizley's pool is filtered to
+  `toddlerAppropriate` figures (one catalog entry, Deborah Sampson, is
+  marked false — her whole significance is tied to disguising herself
+  for combat, too hard to simplify honestly); Millaray/Makaio can receive
+  any figure. Show-and-tell/recall text is genuinely different per kid —
+  Millaray gets era + application/connection reasoning, Makaio gets a
+  clear one-line ask, Maizley gets point/match/name interaction with no
+  open-ended "why" question — proven by direct string assertions in
+  tests, not just by inspection.
+
+  Day-plan integration: `physical_education`'s pattern, reused —
+  `historicalFigureClosing: HistoricalFigureClosingPlan | null` lives on
+  `ProposedDay` (frozen original) and `ProposedDayDraft` (current copy,
+  not yet independently editable, same status as `learningBlocks`), `null`
+  only for a nonInstructional day. The teacher sees the selected figure
+  and generated prompts before approving (`ProposedDaysPage.tsx`'s new
+  `HistoricalFigureClosingSummary`, alongside the existing `BlockList`).
+  Approval freezes it exactly like everything else in `ProposedDay` — no
+  new mechanism needed. Regenerating an unapproved proposal picks fresh
+  (a real new version, per the existing lifecycle rules); an approved
+  day's figure is never touched again by anything in this file.
+
+  Evidence/retention: `EndOfDayEvidencePacket` gained
+  `historicalFigureClosing?: HistoricalFigureClosingEvidence` (figureId
+  seeded from the approved plan; `completed`/`retentionObservation`/
+  `teacherNote`/`recordedByUid`/`recordedAt` filled in by the teacher). A
+  new small, standalone callable, `recordHistoricalFigureRetention`
+  (validated 1-10 integer via `evidenceValidation.ts#
+  isValidRetentionObservation`), because this field lives outside
+  `draft.blocks` entirely — same "editable only while open, frozen at
+  approval" rule as every other packet field. DELIBERATELY never writes
+  to `masteryRecords` or anything `evidenceMastery.ts` reads — a single
+  1-10 score is preserved as its own kind of historical evidence, never
+  auto-interpreted as mastered/not-mastered, exactly as required.
+
+  Hours/compliance: Historical Figure Coloring was never modeled as a
+  `Subject`/`LearningBlock` at all — it has no `approvedMinutes` field,
+  so it structurally cannot reach `aggregateApprovedMinutesBySubject` or
+  post an official `logs` entry, by construction rather than by an
+  excluded-subjects list (PE's approach). No new compliance-hours policy
+  question was created — nothing here touches the 28 hrs/week
+  requirement, the dashboard, or `weeklyHours.ts` at all.
+
+  The Kindred motto/prayer: per instruction, the exact wording was never
+  invented. `Family.closingWords?: string` (new, optional, no default)
+  is a plain family-authored setting, editable directly from
+  `EndOfDayClosingPage.tsx`'s new `FamilyClosingWordsEditor` using the
+  SAME teacher-write permission `families/{familyId}` already had — no
+  new rule, no new callable. Shows "not set yet" rather than any
+  placeholder text until a family actually fills it in.
+
+  Privacy: no new collection was created and no new read rule was
+  needed — `proposedDays`/`evidencePackets` were already teacher-only-
+  read (no student-facing view of either exists yet at all), so a
+  child's retention score/note was never exposed to siblings by
+  construction, confirmed by re-reading `firestore.rules` rather than
+  assumed.
+
+  36 new unit tests (242 -> 278): catalog integrity (stable/unique ids,
+  honest artwork/provenance, Indigenous and outside-modern-US
+  representability, era diversity, toddler-flag mechanics),
+  `getUpcomingContextTags`; `selectHistoricalFigure` (determinism,
+  variety across many dates, anti-repetition with a full-pool fallback,
+  upcoming-context weighting biasing without ever eliminating the
+  alternative, Maizley's toddler filter with a full-pool fallback,
+  sibling-shared-figure-with-differentiated-presentation); prompt-text
+  differentiation across all three kids; the artwork-approval gate's
+  four real states; and a regression test reading `proposedDays.ts`'s
+  and `dayPlans.ts`'s own source to prove `colorSheetRotation` is never
+  referenced. `isValidRetentionObservation`'s full boundary set. No
+  Firestore rules/index changes. Not deployed.
+
+Next up: step 9, once you've reviewed step 8.
 
 ---
 

@@ -73,6 +73,15 @@ export interface LearningBlock {
   notes?: string;
 }
 
+/** Mirrors functions/src/types.ts's HistoricalFigureClosingPlan (build-order step 8). */
+export interface HistoricalFigureClosingPlan {
+  figureId: string;
+  selectionReason: string;
+  artComplexityBand: string;
+  showAndTellPrompt: string;
+  recallQuestion: string;
+}
+
 export interface ProposedDayDraft {
   title: string;
   summary: string;
@@ -80,6 +89,7 @@ export interface ProposedDayDraft {
   jasperMessageEdited?: string;
   itineraryMode: ItineraryMode;
   learningBlocks: LearningBlock[];
+  historicalFigureClosing: HistoricalFigureClosingPlan | null;
   revision: number;
   lastEditedByUid: string;
   lastEditedAt: Timestamp;
@@ -105,6 +115,7 @@ export interface ProposedDay {
   jasperMessage: JasperMessage | null;
   suggestedItineraryMode: ItineraryMode | null;
   learningBlocks: LearningBlock[];
+  historicalFigureClosing: HistoricalFigureClosingPlan | null;
   carryForwardNotes: string[];
   /** The teacher's review copy — current from generation through approval AND beyond (this is the array to display, even for an approved/historical day — see ProposedDaysPage.tsx). See saveProposedDayDraft/approveProposedDay. */
   draft: ProposedDayDraft;

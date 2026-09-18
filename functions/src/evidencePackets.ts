@@ -1,11 +1,11 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { requireCaller, requireTeacher, requireSameFamily, type CallerContext } from "./util/auth";
 import { createProposal, approveProposal } from "./approvals";
 import { getSubjectType } from "./subjects";
 import { getLatestProposedDay } from "./proposedDays";
 import { evidencePacketDocId, getEvidencePacket } from "./curriculum/evidencePacketStore";
-import { mergeBlockEdits } from "./curriculum/evidenceValidation";
+import { isValidRetentionObservation, mergeBlockEdits } from "./curriculum/evidenceValidation";
 import { checkDraftRevision } from "./curriculum/proposedDayLifecycle";
 import { aggregateApprovedMinutesBySubject, hourLogDocId } from "./curriculum/evidenceHours";
 import { applyEligibleEvidenceToMastery } from "./curriculum/evidenceMastery";
@@ -148,6 +148,15 @@ export const openEvidencePacket = onCall<OpenEvidencePacketRequest>(async (reque
     // pending" fallback purely a defensive extra, not something relied on.
     hoursProjection: initialProjectionState(now),
     masteryProjection: initialProjectionState(now),
+    // Seeded (figureId only) from the approved ProposedDay's frozen
+    // selection — build-order step 8. `null` when that day had no
+    // closing routine (e.g. a nonInstructional day, or one generated
+    // before this field existed). retentionObservation starts
+    // unrecorded; the teacher fills it in via
+    // recordHistoricalFigureRetention while the packet is still open.
+    historicalFigureClosing: plan.historicalFigureClosing
+      ? { figureId: plan.historicalFigureClosing.figureId, completed: false, retentionObservation: null }
+      : null,
   };
 
   const db = getFirestore();
@@ -249,6 +258,65 @@ export const saveEvidencePacketDraft = onCall<SaveEvidencePacketDraftRequest>(as
   });
 
   return { revision: newRevision };
+});
+
+interface RecordHistoricalFigureRetentionRequest {
+  packetId: string;
+  retentionObservation: number;
+  teacherNote?: string;
+}
+
+/**
+ * Records the teacher-observed retention/demonstration rating for the
+ * day's Historical Figure Closing (build-order step 8, requirement 10) —
+ * a small, standalone mutation because this field lives outside
+ * `draft.blocks` entirely (see types.ts's HistoricalFigureClosingEvidence
+ * doc comment on why it's kept independent of the 2-of-3 mastery
+ * system). Same "editable only while open, frozen at approval" rule as
+ * every other packet field. DELIBERATELY never writes to
+ * `masteryRecords` or anything evidenceMastery.ts reads — a single 1-10
+ * score is never auto-interpreted as mastered/not-mastered.
+ */
+export const recordHistoricalFigureRetention = onCall<RecordHistoricalFigureRetentionRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const { packetId, retentionObservation, teacherNote } = request.data ?? {};
+  if (!packetId || typeof packetId !== "string") {
+    throw new HttpsError("invalid-argument", "packetId is required.");
+  }
+  if (!isValidRetentionObservation(retentionObservation)) {
+    throw new HttpsError("invalid-argument", "retentionObservation must be a whole number from 1 to 10.");
+  }
+  if (teacherNote !== undefined && typeof teacherNote !== "string") {
+    throw new HttpsError("invalid-argument", "teacherNote must be a string.");
+  }
+
+  const db = getFirestore();
+  const ref = db.collection("evidencePackets").doc(packetId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "No such evidence packet.");
+  }
+  const doc = snap.data() as EndOfDayEvidencePacket;
+  requireSameFamily(caller, doc.familyId);
+  if (doc.status !== "open") {
+    throw new HttpsError("failed-precondition", "This packet is already approved — it can no longer be edited.");
+  }
+  if (!doc.historicalFigureClosing) {
+    throw new HttpsError("failed-precondition", "This day has no Historical Figure Closing to record.");
+  }
+
+  const now = Timestamp.now();
+  await ref.update({
+    "historicalFigureClosing.completed": true,
+    "historicalFigureClosing.retentionObservation": retentionObservation,
+    "historicalFigureClosing.teacherNote": teacherNote && teacherNote.trim() ? teacherNote.trim() : FieldValue.delete(),
+    "historicalFigureClosing.recordedByUid": caller.uid,
+    "historicalFigureClosing.recordedAt": now,
+  });
+
+  return { packetId };
 });
 
 interface ApproveEvidencePacketPayload {

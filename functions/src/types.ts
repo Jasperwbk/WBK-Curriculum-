@@ -89,6 +89,19 @@ export interface Family {
   curriculumGovernance?: CurriculumGovernanceState;
   /** Optional — how many days ahead of the school date proposed days should target. Undefined means DEFAULT_GENERATION_LEAD_DAYS (2) — see generationSchedule.ts. Configurable rather than a hardcoded "48 hours" assumption. */
   dayGenerationLeadDays?: number;
+  /**
+   * The family's own closing motto/prayer/Kindred words (build-order step
+   * 8) — the LAST step of the locked daily closing sequence, after
+   * Historical Figure Coloring/stretching/reflection. Deliberately a
+   * plain, family-authored string with NO default and NO AI-generated
+   * fallback: the exact wording was explicitly not supplied at spec time
+   * and must never be invented (see curriculum/gap_analysis's "Kindred
+   * closing language" deferral). Undefined/empty means the closing UI
+   * shows nothing here yet rather than fabricating placeholder text —
+   * teacher-writable directly (same `families/{familyId}` write rule as
+   * every other family setting).
+   */
+  closingWords?: string;
 }
 
 export interface UserProfile {
@@ -667,6 +680,141 @@ export interface LearningBlock {
   notes?: string;
 }
 
+// --- Historical Figure Coloring (build-order step 1 contract; selection
+// logic and day-plan/evidence wiring is step 8) ---
+//
+// A short daily CLOSING activity, not a history lesson: one real
+// historical person, a coloring page, brief show-and-tell/recall, and a
+// teacher-observed retention note. Supersedes the retired subject-ring
+// color-sheet rotation (curriculum/colorSheetRotation.ts) — independent
+// of subject/hours entirely (see below), never tied to a LearningBlock.
+//
+// These types were originally defined directly in
+// curriculum/historicalFigureSelector.ts (step 1); moved here in step 8
+// alongside every other domain's schema (LearningBlock, EvidenceBlockEntry,
+// etc.) so ProposedDay/EndOfDayEvidencePacket below can reference them —
+// types.ts is the dependency root and never imports from curriculum/*.
+// historicalFigureSelector.ts still holds the actual selection/generation
+// LOGIC that operates on these shapes, importing them back from here like
+// every other curriculum/*.ts file does.
+
+/** Whether a printable art asset for a figure actually exists yet — never assumed true. */
+export type ArtworkAvailabilityStatus = "available" | "unavailable";
+
+/**
+ * Rights status for ARTWORK specifically — deliberately separate from a
+ * figure's historical-fact `provenance` below (build-order step 8,
+ * requirement 7: "historical facts and artwork provenance are separate
+ * concerns"). `"unknown_unverified"` is the safe default whenever rights
+ * haven't been explicitly confirmed — see
+ * historicalFigureSelector.ts#isArtworkApprovedForPrinting, which treats
+ * this status as never-printable regardless of `status` above.
+ */
+export type ArtworkRightsStatus = "public_domain" | "licensed" | "family_owned" | "generated_owned" | "unknown_unverified";
+
+export interface HistoricalFigureArtwork {
+  status: ArtworkAvailabilityStatus;
+  rightsStatus: ArtworkRightsStatus;
+  sourceTitle?: string;
+  urlOrFileRef?: string;
+  allowedUseNotes?: string;
+}
+
+/** Source/rights discipline for the historical FACTS (name/era/bio) — never for artwork, see HistoricalFigureArtwork above. */
+export interface HistoricalFigureProvenance {
+  sourceTitle: string;
+  authorOrInstitution?: string;
+  urlOrFileRef?: string;
+  retrievedOrVersionDate?: string;
+  rightsStatus: string;
+  allowedUseNotes?: string;
+}
+
+/**
+ * A real historical person available for the coloring/show-and-tell
+ * feature — hand-authored in curriculum/historicalFigureCatalog.ts, never
+ * invented by an AI call at generation time (build-order step 8,
+ * requirement: "do not let the AI invent source provenance" / "do not
+ * fabricate historical people"). Selection and prompt text are both
+ * deterministic, template-based functions over this catalog — see
+ * historicalFigureSelector.ts's doc comment for why no AI call is made
+ * for this feature at all.
+ */
+export interface HistoricalFigure {
+  /** Stable ID — never reuse after a figure is retired from the pool. */
+  id: string;
+  name: string;
+  era: string;
+  /** e.g. "Indigenous / pre-colonial", "Colonial America", "U.S. 19th century". */
+  region: string;
+  /** Concise, child-safe — a sentence or two, never a full biography. */
+  briefBio: string;
+  /** Concise — why this person is worth a child's exposure/familiarity. */
+  whyItMatters: string;
+  /** Curriculum tie-ins (subjects, week themes) used for upcoming-context selection weighting. */
+  relevanceTags: string[];
+  /** False only for figures whose defining significance can't be simplified into a genuinely toddler-safe presentation (see historicalFigureSelector.ts's toddler filter) — presentation still adapts by age even when true; this only ever REMOVES a figure from Maizley's pool, never adds written-work complexity for her. */
+  toddlerAppropriate: boolean;
+  provenance: HistoricalFigureProvenance;
+  artwork: HistoricalFigureArtwork;
+}
+
+/** Art-ability band per kid — how much line-art detail their coloring page should carry. Carried over from the retired color-sheet system's BAND_BY_KID. */
+export const ART_COMPLEXITY_BAND_BY_KID: Record<PlacementKidKey, string> = {
+  millaray: "Band C (detailed scene, background allowed, ~15-20 min to color)",
+  makaio: "Band B (one clear scene, 4-8 objects, some interior detail)",
+  maizley: "Band A (2-4 giant objects, thick outlines, no background)",
+};
+
+/**
+ * One kid's featured historical figure for one school day — planning-time
+ * content, generated once and frozen exactly like `jasperMessage`
+ * (immutable original on ProposedDay, current copy in
+ * ProposedDayDraft, never silently replaced once approved — see
+ * proposedDays.ts). `null` only for a "nonInstructional" day (no closing
+ * routine happens at all).
+ */
+export interface HistoricalFigureClosingPlan {
+  figureId: string;
+  /** Why this figure was chosen today (variety/relevance reasoning), for teacher review before approval. */
+  selectionReason: string;
+  artComplexityBand: string;
+  /** Deterministic, template-based, age-differentiated — see historicalFigureSelector.ts. Examples only, not required hardcoded wording. */
+  showAndTellPrompt: string;
+  recallQuestion: string;
+}
+
+/**
+ * The teacher-recorded EVIDENCE side of the day's Historical Figure
+ * Closing — lives on EndOfDayEvidencePacket, seeded (figureId only) from
+ * the approved ProposedDay's HistoricalFigureClosingPlan at packet-open
+ * time, exactly like EvidenceBlockEntry copies its plan fields from
+ * LearningBlock. `retentionObservation`/`teacherNote` are the only
+ * fields a teacher ever writes here (recordHistoricalFigureRetention,
+ * evidencePackets.ts), while the packet is still "open" — frozen forever
+ * once approved, same rule as every other packet field.
+ *
+ * DELIBERATELY separate from the 2-of-3 objective mastery system
+ * (build-order step 8, requirement 10): a single 1-10 observation is
+ * preserved historically as its own kind of evidence, never auto-mapped
+ * to "mastered"/"not mastered" — nothing in evidenceMastery.ts reads this
+ * field, and nothing here writes to masteryRecords. A future step could
+ * define an explicit mapped-objective/evidence policy to bridge the two;
+ * until then they stay independent on purpose.
+ */
+export interface HistoricalFigureClosingEvidence {
+  figureId: string;
+  /** Whether the closing routine actually happened for this figure — distinct from whether it's been scored yet. */
+  completed: boolean;
+  /** 1-10 teacher-observed retention/demonstration rating; null until recorded. See curriculum/evidenceValidation.ts#isValidRetentionObservation. */
+  retentionObservation: number | null;
+  teacherNote?: string;
+  /** Optional — a photo of the physically-completed coloring page, when the family chooses to preserve one. Reuses the existing generic ArtifactReference rather than a competing artwork-history model. */
+  preservedArtwork?: ArtifactReference;
+  recordedByUid?: string;
+  recordedAt?: Timestamp;
+}
+
 export interface ProposedDay {
   familyId: string;
   studentId: string;
@@ -716,6 +864,20 @@ export interface ProposedDay {
   /** Claude's suggestion at generation time. */
   suggestedItineraryMode: ItineraryMode | null;
   learningBlocks: LearningBlock[];
+  /**
+   * The day's Historical Figure Coloring closing activity (build-order
+   * step 8) — generated deterministically alongside everything else
+   * above, same immutable-original/current-draft split (see
+   * ProposedDayDraft.historicalFigureClosing). `null` only for a
+   * "nonInstructional" day; present for both "ordinary" and
+   * "alternativePackage" days, since the closing routine is part of the
+   * normal school day regardless of what the academic content looks like
+   * today. Independent of `learningBlocks`/`Subject` entirely — never
+   * hour-bearing, never a LearningBlock, so it cannot affect instructional
+   * hour totals or the 28 hrs/week requirement by construction (see
+   * curriculum/historicalFigureSelector.ts's doc comment).
+   */
+  historicalFigureClosing: HistoricalFigureClosingPlan | null;
   /**
    * Carry-forward/incomplete-work notes from the prior school day, when
    * available — human-readable summary; see curriculum/carryForward.ts
@@ -777,6 +939,8 @@ export interface ProposedDayDraft {
    * approved/published one, not the frozen original.
    */
   learningBlocks: LearningBlock[];
+  /** Current copy of ProposedDay.historicalFigureClosing — same "seeded, not yet independently editable via saveProposedDayDraft" status as learningBlocks above. */
+  historicalFigureClosing: HistoricalFigureClosingPlan | null;
   /** 0 for the seeded, never-actually-edited copy created at generation time; increments by 1 on each saveProposedDayDraft call. */
   revision: number;
   lastEditedByUid: string;
@@ -998,6 +1162,16 @@ export interface EndOfDayEvidencePacket {
    */
   hoursProjection: ProjectionState;
   masteryProjection: ProjectionState;
+  /**
+   * Seeded at packet-open time from the source ProposedDay's
+   * `historicalFigureClosing` (figureId only — `null` when that day had
+   * none, e.g. a day generated before this field existed, or one with no
+   * closing routine). Undefined only for a packet opened before this
+   * field existed at all (legacy compatibility) — never written back to
+   * `undefined` afterward. See evidencePackets.ts#openEvidencePacket and
+   * evidencePackets.ts#recordHistoricalFigureRetention.
+   */
+  historicalFigureClosing?: HistoricalFigureClosingEvidence | null;
 }
 
 /**
