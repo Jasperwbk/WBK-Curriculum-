@@ -216,6 +216,7 @@ export const confirmExtracurricular = onCall<ConfirmExtracurricularRequest>(asyn
         location: "external",
         source: "extracurricular",
         extracurricularId: recordRef.id,
+        provenance: "extracurricular",
       });
     }
   });

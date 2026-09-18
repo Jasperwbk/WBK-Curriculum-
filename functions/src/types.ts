@@ -12,6 +12,19 @@ export type Location = "home" | "field" | "external";
 
 export type LogSource = "curriculum" | "extracurricular";
 
+/**
+ * Explicit creation-path classification (build-order step 6.1) —
+ * distinct from LogSource (what KIND of content it is) and orthogonal to
+ * it: this is about WHERE/HOW the record was created and how much to
+ * trust it as already-deduplicated. Absent on a log entry means
+ * "manual" for compatibility — every log written before this field
+ * existed, and every ordinary LogActivityPage entry, continues to count
+ * exactly as it always has (see dashboard.ts's
+ * curriculum/hourAggregation.ts, which never gates on this field at
+ * all — it's for classification/auditing, not for excluding anything).
+ */
+export type LogProvenance = "manual" | "extracurricular" | "governedEvidence";
+
 export type SubjectType = "core" | "specialty";
 
 export type ExtracurricularType = "tutor" | "class" | "sport" | "award" | "other";
@@ -84,6 +97,14 @@ export interface LogEntry {
    * comment for the full legacy-compatibility rule.
    */
   evidencePacketId?: string;
+  /**
+   * Explicit classification (build-order step 6.1) — absent means
+   * "manual" (legacy compatibility: nothing before this field existed
+   * has it, and it still counts). Never used to exclude a record from
+   * dashboard.ts's totals — see LogProvenance's doc comment and
+   * curriculum/hourAggregation.ts.
+   */
+  provenance?: LogProvenance;
 }
 
 export interface ExtracurricularRecord {
@@ -887,6 +908,26 @@ export interface EvidencePacketDraft {
   lastEditedAt: Timestamp;
 }
 
+// --- Post-approval projection state (build-order step 6.1) ---
+//
+// An approved packet is authoritative the instant it's approved — that
+// boundary never moves. But turning it into official hours and mastery
+// evidence are separate, independently-fallible DOWNSTREAM projections,
+// and step 6 originally only tracked "done or not done" (a bare
+// timestamp), with no way to represent or surface "attempted and
+// failed." This makes that explicit, so a teacher never has to inspect
+// Firestore to discover a stuck packet.
+export type ProjectionStatus = "pending" | "applied" | "failed";
+
+export interface ProjectionState {
+  status: ProjectionStatus;
+  lastAttemptAt: Timestamp;
+  /** Set only when status becomes "applied" — never touched again after that (a projection that has succeeded is never re-run; see curriculum/evidenceProjection.ts#needsProjection). */
+  appliedAt?: Timestamp;
+  /** A concise message only (curriculum/evidenceProjection.ts#summarizeError truncates and never stores a raw stack trace or any secret) — present only when status is "failed". */
+  error?: string;
+}
+
 /**
  * One per (family, student, date) — deliberately a DETERMINISTIC doc id
  * (`${familyId}_${studentId}_${date}`, see curriculum/evidencePacketStore.ts)
@@ -921,7 +962,28 @@ export interface EndOfDayEvidencePacket {
    * the side-effect pass finishing (build-order step 6, requirement:
    * "official hour posting is idempotent").
    */
-  hoursPostedAt?: Timestamp;
-  /** Same idempotency guard for the mastery-update side effect (evidenceMastery.ts). */
-  masteryAppliedAt?: Timestamp;
+  /**
+   * Independent, explicit processing state for each post-approval
+   * projection (build-order step 6.1 — replaces step 6's plain
+   * hoursPostedAt/masteryAppliedAt timestamps, which couldn't represent
+   * "attempted and failed" at all). The approval boundary itself
+   * (status/approvedByUid/approvedAt above) never changes once set —
+   * an approved packet stays approved even if a projection fails; only
+   * these two fields track whether its DOWNSTREAM effects have actually
+   * landed. See curriculum/evidenceProjection.ts.
+   */
+  hoursProjection: ProjectionState;
+  masteryProjection: ProjectionState;
+  /**
+   * Which objective-evidence items (identified as "{blockId}:{index within
+   * that block's objectiveEvidence array}", computed the same way on every
+   * attempt — see evidenceMastery.ts#selectMasteryEligibleItems) have
+   * already been turned into a mastery result. A packet-level
+   * masteryProjection.status flag alone can't protect against a crash
+   * between individual mastery writes (see evidenceMastery.ts's doc
+   * comment) — this per-item guard is what actually makes a retry safe:
+   * each eligible item can influence the 2-of-3 window at most once,
+   * ever, no matter how many times reconciliation runs.
+   */
+  appliedMasteryEvidenceIds: string[];
 }

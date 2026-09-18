@@ -9,6 +9,7 @@ import {
   type EvidenceBlockEntry,
   type EvidenceDemonstrationType,
   type EvidenceOutcome,
+  type EvidencePacket,
   type EvidenceSourceType,
   type ObjectiveEvidenceItem,
   type PacketBlockCompletionState,
@@ -71,6 +72,11 @@ const approveEvidencePacketsFn = httpsCallable<
   { results: { packetId: string; ok: boolean; error?: string }[] }
 >(functions, "approveEvidencePackets");
 
+const reconcileEvidencePacketFn = httpsCallable<
+  { packetId: string },
+  { packetId: string; hoursStatus: string; masteryStatus: string }
+>(functions, "reconcileEvidencePacket");
+
 /** The fields a teacher actually edits for one evidence item — recordedByUid/recordedAt are always server-set (evidenceValidation.ts ignores whatever the client sends for them), so the local editing state never needs to fabricate them. */
 type EvidenceDraftItem = Omit<ObjectiveEvidenceItem, "recordedByUid" | "recordedAt">;
 
@@ -126,6 +132,7 @@ export function EndOfDayClosingPage() {
   const [approving, setApproving] = useState(false);
   const [selectedForBatch, setSelectedForBatch] = useState<Set<string>>(new Set());
   const [batchApproving, setBatchApproving] = useState(false);
+  const [reconcilingId, setReconcilingId] = useState<string | null>(null);
   const [newEvidenceByBlock, setNewEvidenceByBlock] = useState<Record<string, Partial<EvidenceDraftItem>>>({});
 
   function studentName(uid: string): string {
@@ -280,6 +287,19 @@ export function EndOfDayClosingPage() {
     });
   }
 
+  async function handleReconcile(packetId: string) {
+    setReconcilingId(packetId);
+    setError(null);
+    try {
+      await reconcileEvidencePacketFn({ packetId });
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : null;
+      setError(message ?? "Couldn't retry this packet's processing. Try again.");
+    } finally {
+      setReconcilingId(null);
+    }
+  }
+
   async function handleBatchApprove() {
     setBatchApproving(true);
     setError(null);
@@ -407,7 +427,11 @@ export function EndOfDayClosingPage() {
                 </div>
 
                 {packet && packet.status === "approved" && (
-                  <ApprovedSummary blocks={packet.draft.blocks} />
+                  <ApprovedSummary
+                    packet={packet}
+                    reconciling={reconcilingId === packet.id}
+                    onReconcile={() => handleReconcile(packet.id)}
+                  />
                 )}
 
                 {isEditing && editing && (
@@ -675,15 +699,63 @@ export function EndOfDayClosingPage() {
   );
 }
 
-/** Read-only summary for an already-approved (historical, immutable) packet — carry-forward candidates and posted hours, for reference. */
-function ApprovedSummary({ blocks }: { blocks: EvidenceBlockEntry[] }) {
+const PROJECTION_LABEL: Record<string, string> = {
+  applied: "Applied",
+  pending: "Pending",
+  failed: "Needs retry",
+};
+
+/**
+ * Read-only summary for an already-approved (historical, immutable)
+ * packet — carry-forward candidates, posted hours, and (build-order step
+ * 6.1) each downstream projection's actual state, with a Retry action
+ * when either hasn't landed yet. The approval itself never changes here;
+ * only the two independent hours/mastery projections do.
+ */
+function ApprovedSummary({
+  packet,
+  reconciling,
+  onReconcile,
+}: {
+  packet: EvidencePacket;
+  reconciling: boolean;
+  onReconcile: () => void;
+}) {
+  const blocks = packet.draft.blocks;
   const outstanding = blocks.filter(
     (b) => b.required && (b.completionState === "not_started" || b.completionState === "in_progress")
   );
   const totalApproved = blocks.reduce((sum, b) => sum + (b.approvedMinutes ?? 0), 0);
+  const hoursOk = packet.hoursProjection.status === "applied";
+  const masteryOk = packet.masteryProjection.status === "applied";
   return (
     <div className="text-xs space-y-1" style={{ color: "var(--text-secondary)" }}>
       <div>{totalApproved} approved instructional minutes posted.</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span style={{ color: hoursOk ? "var(--status-good)" : "var(--status-critical)" }}>
+          Hours: {PROJECTION_LABEL[packet.hoursProjection.status]}
+        </span>
+        <span style={{ color: masteryOk ? "var(--status-good)" : "var(--status-critical)" }}>
+          Mastery: {PROJECTION_LABEL[packet.masteryProjection.status]}
+        </span>
+        {(!hoursOk || !masteryOk) && (
+          <button
+            type="button"
+            onClick={onReconcile}
+            disabled={reconciling}
+            className="rounded-md border px-2 py-0.5 text-xs font-medium disabled:opacity-60"
+            style={{ borderColor: "var(--series-1)", color: "var(--series-1)" }}
+          >
+            {reconciling ? "Retrying..." : "Retry"}
+          </button>
+        )}
+      </div>
+      {packet.hoursProjection.error && (
+        <div style={{ color: "var(--status-critical)" }}>Hours error: {packet.hoursProjection.error}</div>
+      )}
+      {packet.masteryProjection.error && (
+        <div style={{ color: "var(--status-critical)" }}>Mastery error: {packet.masteryProjection.error}</div>
+      )}
       {outstanding.length > 0 && (
         <div style={{ color: "var(--status-critical)" }}>
           Carry-forward candidates for the next proposal: {outstanding.map((b) => b.title).join(", ")}

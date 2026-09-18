@@ -7,8 +7,14 @@ import { getLatestProposedDay } from "./proposedDays";
 import { evidencePacketDocId, getEvidencePacket } from "./curriculum/evidencePacketStore";
 import { mergeBlockEdits } from "./curriculum/evidenceValidation";
 import { checkDraftRevision } from "./curriculum/proposedDayLifecycle";
-import { aggregateApprovedMinutesBySubject } from "./curriculum/evidenceHours";
+import { aggregateApprovedMinutesBySubject, hourLogDocId } from "./curriculum/evidenceHours";
 import { applyEligibleEvidenceToMastery } from "./curriculum/evidenceMastery";
+import {
+  appliedProjectionState,
+  failedProjectionState,
+  initialProjectionState,
+  needsProjection,
+} from "./curriculum/evidenceProjection";
 import type { EndOfDayEvidencePacket, EvidenceBlockEntry, LogEntry } from "./types";
 
 /**
@@ -44,11 +50,18 @@ import type { EndOfDayEvidencePacket, EvidenceBlockEntry, LogEntry } from "./typ
  * already-working, unrelated legacy flow, which is exactly the kind of
  * unnecessary replacement of working compliance math the spec asks to
  * avoid.
+ *
+ * PROCESSING STATE (build-order step 6.1): approval itself is one atomic
+ * transaction and never fails partway — but the two things approval
+ * triggers (posting hours, applying mastery) are separate Firestore work
+ * that CAN fail independently (a network blip, e.g.). Each is tracked as
+ * its own explicit hoursProjection/masteryProjection state
+ * (pending/applied/failed — see curriculum/evidenceProjection.ts) rather
+ * than a bare "did it happen" timestamp, and reconcileEvidencePacket lets
+ * a teacher retry whichever one is stuck WITHOUT re-approving the
+ * underlying evidence. See runProjections below, shared by both the
+ * post-approval pass and reconciliation.
  */
-
-function hourLogDocId(packetId: string, subject: string): string {
-  return `evidence_${packetId}_${subject}`;
-}
 
 interface OpenEvidencePacketRequest {
   familyId: string;
@@ -127,6 +140,15 @@ export const openEvidencePacket = onCall<OpenEvidencePacketRequest>(async (reque
       lastEditedByUid: caller.uid,
       lastEditedAt: now,
     },
+    // Both projections start "pending" — neither can be meaningfully
+    // attempted before the packet is even approved; runProjections is
+    // only ever called post-approval, but seeding the state here (rather
+    // than leaving these fields undefined until approval) keeps the
+    // schema simple and needsProjection's "undefined behaves like
+    // pending" fallback purely a defensive extra, not something relied on.
+    hoursProjection: initialProjectionState(now),
+    masteryProjection: initialProjectionState(now),
+    appliedMasteryEvidenceIds: [],
   };
 
   const db = getFirestore();
@@ -238,14 +260,77 @@ interface ApproveEvidencePacketPayload {
 }
 
 /**
+ * Runs whichever of the two post-approval projections (hours, mastery)
+ * still needs it — shared verbatim by the approval flow and by
+ * reconcileEvidencePacket, so "approve" and "retry" are the exact same
+ * code path, never two independently-maintained implementations that
+ * could drift apart. Each projection is wrapped in its own try/catch:
+ * one failing never blocks or skips the other, and never touches the
+ * packet's approval boundary (status/approvedByUid/approvedAt) at all —
+ * an approved packet stays approved regardless of what happens here.
+ */
+async function runProjections(packetId: string): Promise<void> {
+  const db = getFirestore();
+  const ref = db.collection("evidencePackets").doc(packetId);
+
+  let snap = await ref.get();
+  let packet = snap.data() as EndOfDayEvidencePacket;
+
+  if (needsProjection(packet.hoursProjection)) {
+    await ref.update({ hoursProjection: initialProjectionState(Timestamp.now()) });
+    try {
+      const bySubject = aggregateApprovedMinutesBySubject(packet.draft.blocks);
+      const batch = db.batch();
+      for (const [subject, minutes] of Object.entries(bySubject)) {
+        const log: LogEntry = {
+          familyId: packet.familyId,
+          userId: packet.studentId,
+          date: Timestamp.fromDate(new Date(packet.date)),
+          subject: subject as LogEntry["subject"],
+          subjectType: getSubjectType(subject),
+          durationMinutes: minutes as number,
+          location: "home",
+          source: "curriculum",
+          evidencePacketId: packetId,
+          provenance: "governedEvidence",
+        };
+        // Deterministic id (hourLogDocId) — re-running this always
+        // overwrites the SAME doc with the SAME final value; it never
+        // creates a second, duplicate hours entry.
+        batch.set(db.collection("logs").doc(hourLogDocId(packetId, subject)), log);
+      }
+      await batch.commit();
+      await ref.update({ hoursProjection: appliedProjectionState(Timestamp.now()) });
+    } catch (err) {
+      await ref.update({ hoursProjection: failedProjectionState(Timestamp.now(), err) });
+    }
+  }
+
+  // Re-read: the hours pass above may have updated the doc, and mastery
+  // reads draft.blocks fresh regardless (it's unchanged by hours, but
+  // re-reading keeps this pass self-contained rather than relying on the
+  // hours pass not having touched anything mastery cares about).
+  snap = await ref.get();
+  packet = snap.data() as EndOfDayEvidencePacket;
+
+  if (needsProjection(packet.masteryProjection)) {
+    await ref.update({ masteryProjection: initialProjectionState(Timestamp.now()) });
+    try {
+      await applyEligibleEvidenceToMastery(ref, packet.familyId, packet.studentId, packet.draft);
+      await ref.update({ masteryProjection: appliedProjectionState(Timestamp.now()) });
+    } catch (err) {
+      await ref.update({ masteryProjection: failedProjectionState(Timestamp.now(), err) });
+    }
+  }
+}
+
+/**
  * Freezes the packet (status -> approved, every block's approvedMinutes
  * set from its current reportedMinutes, never touched again) inside one
- * transaction — then, as two separate best-effort passes AFTER that
- * transaction has committed, posts official hours and applies eligible
- * evidence to mastery. Each pass is individually guarded by its own
- * `*PostedAt`/`*AppliedAt` timestamp so a retried call can never double-
- * post hours or double-apply mastery (requirement: "official hour
- * posting is idempotent").
+ * transaction — then runs both post-approval projections via
+ * runProjections. The approval boundary itself never depends on those
+ * projections succeeding: an approved packet is approved the instant the
+ * transaction above commits, full stop.
  */
 async function approveOnePacket(caller: CallerContext, packetId: string, expectedRevision: number): Promise<void> {
   const db = getFirestore();
@@ -304,37 +389,7 @@ async function approveOnePacket(caller: CallerContext, packetId: string, expecte
     });
   }
 
-  // --- Post-approval side effects: each independently idempotent. ---
-  const postSnap = await ref.get();
-  const approved = postSnap.data() as EndOfDayEvidencePacket;
-
-  if (!approved.hoursPostedAt) {
-    const bySubject = aggregateApprovedMinutesBySubject(approved.draft.blocks);
-    const batch = db.batch();
-    for (const [subject, minutes] of Object.entries(bySubject)) {
-      const log: LogEntry = {
-        familyId: approved.familyId,
-        userId: approved.studentId,
-        date: Timestamp.fromDate(new Date(approved.date)),
-        subject: subject as LogEntry["subject"],
-        subjectType: getSubjectType(subject),
-        durationMinutes: minutes as number,
-        location: "home",
-        source: "curriculum",
-        evidencePacketId: packetId,
-      };
-      batch.set(db.collection("logs").doc(hourLogDocId(packetId, subject)), log);
-    }
-    batch.update(ref, { hoursPostedAt: Timestamp.now() });
-    await batch.commit();
-  }
-
-  const masterySnap = await ref.get();
-  const forMastery = masterySnap.data() as EndOfDayEvidencePacket;
-  if (!forMastery.masteryAppliedAt) {
-    await applyEligibleEvidenceToMastery(forMastery.familyId, forMastery.studentId, forMastery.draft);
-    await ref.update({ masteryAppliedAt: Timestamp.now() });
-  }
+  await runProjections(packetId);
 }
 
 interface ApproveEvidencePacketRequest {
@@ -401,4 +456,55 @@ export const approveEvidencePackets = onCall<ApproveEvidencePacketsRequest>(asyn
   );
 
   return { results };
+});
+
+interface ReconcileEvidencePacketRequest {
+  packetId: string;
+}
+
+/**
+ * Teacher/admin-authorized retry for an ALREADY-APPROVED packet whose
+ * hours and/or mastery projection is stuck at "pending" or "failed"
+ * (build-order step 6.1, requirement F). Never re-opens or re-approves
+ * the underlying evidence — the educational record (what the teacher
+ * recorded and approved) is untouched; this only re-runs whichever
+ * downstream projection(s) haven't successfully landed yet, via the
+ * exact same runProjections used right after approval. Idempotent by
+ * construction: needsProjection skips anything already "applied", the
+ * deterministic hourLogDocId means a hours retry overwrites rather than
+ * duplicates, and the per-item appliedMasteryEvidenceIds guard means a
+ * mastery retry can only ever apply evidence that hasn't landed yet.
+ */
+export const reconcileEvidencePacket = onCall<ReconcileEvidencePacketRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const { packetId } = request.data ?? {};
+  if (!packetId || typeof packetId !== "string") {
+    throw new HttpsError("invalid-argument", "packetId is required.");
+  }
+
+  const db = getFirestore();
+  const ref = db.collection("evidencePackets").doc(packetId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "No such evidence packet.");
+  }
+  const doc = snap.data() as EndOfDayEvidencePacket;
+  requireSameFamily(caller, doc.familyId);
+  if (doc.status !== "approved") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Only an approved packet has projections to reconcile — open packets have nothing to retry yet."
+    );
+  }
+
+  await runProjections(packetId);
+
+  const after = (await ref.get()).data() as EndOfDayEvidencePacket;
+  return {
+    packetId,
+    hoursStatus: after.hoursProjection.status,
+    masteryStatus: after.masteryProjection.status,
+  };
 });

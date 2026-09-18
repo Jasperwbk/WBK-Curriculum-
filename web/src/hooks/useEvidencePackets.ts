@@ -72,6 +72,15 @@ export interface EvidencePacketDraft {
   lastEditedAt: Timestamp;
 }
 
+export type ProjectionStatus = "pending" | "applied" | "failed";
+
+export interface ProjectionState {
+  status: ProjectionStatus;
+  lastAttemptAt: Timestamp;
+  appliedAt?: Timestamp;
+  error?: string;
+}
+
 export interface EvidencePacket {
   id: string;
   familyId: string;
@@ -85,8 +94,9 @@ export interface EvidencePacket {
   draft: EvidencePacketDraft;
   approvedByUid?: string;
   approvedAt?: Timestamp;
-  hoursPostedAt?: Timestamp;
-  masteryAppliedAt?: Timestamp;
+  hoursProjection: ProjectionState;
+  masteryProjection: ProjectionState;
+  appliedMasteryEvidenceIds: string[];
 }
 
 /** Every evidencePackets doc for the family, newest date first. */

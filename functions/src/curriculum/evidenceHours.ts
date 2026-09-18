@@ -24,3 +24,17 @@ export function aggregateApprovedMinutesBySubject(blocks: readonly EvidenceBlock
   }
   return totals;
 }
+
+/**
+ * Deterministic `logs` doc id for one packet's one subject (build-order
+ * step 6, hardened/exported in 6.1) — the SAME (packetId, subject) always
+ * produces the SAME id, so re-running the hours-posting pass (via
+ * reconciliation, a retried call, or any other reason) always overwrites
+ * the identical doc rather than creating a duplicate. This is the actual
+ * mechanism behind "official hour posting is idempotent" — preserved
+ * unchanged from step 6 rather than replaced, per the 6.1 instruction to
+ * strengthen rather than unnecessarily replace it.
+ */
+export function hourLogDocId(packetId: string, subject: string): string {
+  return `evidence_${packetId}_${subject}`;
+}

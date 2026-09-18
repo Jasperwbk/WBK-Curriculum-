@@ -11,6 +11,7 @@ import {
 } from "./types";
 import { requireCaller, requireOwnerOrTeacher, requireSameFamily } from "./util/auth";
 import { computeSubjectWeights } from "./curriculum/subjectWeights";
+import { sumInstructionalMinutes } from "./curriculum/hourAggregation";
 
 export type GaugeStatus = "green" | "yellow" | "red";
 
@@ -83,13 +84,18 @@ async function getActualHoursToDate(
   }
 
   const snap = await query.get();
-  let totalMinutes = 0;
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    if (data.familyId !== familyId) continue; // defense in depth
-    if (opts.locations && !opts.locations.includes(data.location)) continue;
-    totalMinutes += data.durationMinutes ?? 0;
-  }
+  // sumInstructionalMinutes (curriculum/hourAggregation.ts) is the ONE
+  // deterministic official-hour calculation (build-order step 6.1) —
+  // deliberately behavior-preserving: it does not gate on
+  // LogEntry.provenance, so a legacy, manual, extracurricular, or
+  // governed-evidence log all count identically, exactly as before this
+  // step. See that file's doc comment for why no dedup logic was added
+  // here.
+  const totalMinutes = sumInstructionalMinutes(
+    snap.docs.map((doc) => doc.data() as { familyId: string; location: Location; durationMinutes: number }),
+    familyId,
+    { locations: opts.locations }
+  );
   return totalMinutes / 60;
 }
 

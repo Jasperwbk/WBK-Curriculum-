@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aggregateApprovedMinutesBySubject } from "./evidenceHours";
+import { aggregateApprovedMinutesBySubject, hourLogDocId } from "./evidenceHours";
 import { selectMasteryEligibleItems } from "./evidenceMastery";
 import type { EvidenceBlockEntry, EvidencePacketDraft } from "../types";
 
@@ -95,4 +95,18 @@ test("compliance vs. mastery: a completed block with a weak/incorrect evidence o
   const masteryItems = selectMasteryEligibleItems(draft);
   assert.equal(masteryItems.length, 1);
   assert.equal(masteryItems[0].correct, false);
+});
+
+// --- hourLogDocId: hour-posting idempotency (build-order step 6.1) ---
+
+test("hourLogDocId is deterministic — the same packet+subject always produces the same doc id, so a retry overwrites rather than duplicates", () => {
+  const a = hourLogDocId("packet-1", "math");
+  const b = hourLogDocId("packet-1", "math");
+  assert.equal(a, b);
+});
+
+test("hourLogDocId differs across subjects for the same packet, and across packets for the same subject — no cross-contamination", () => {
+  const base = hourLogDocId("packet-1", "math");
+  assert.notEqual(hourLogDocId("packet-1", "science"), base);
+  assert.notEqual(hourLogDocId("packet-2", "math"), base);
 });

@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
-import { isEvidenceEligibleForMastery, mapOutcomeToMasteryBoolean, selectMasteryEligibleItems } from "./evidenceMastery";
+import {
+  evidenceItemId,
+  isEvidenceEligibleForMastery,
+  mapOutcomeToMasteryBoolean,
+  selectMasteryEligibleItems,
+} from "./evidenceMastery";
 import type { EvidenceBlockEntry, EvidencePacketDraft, ObjectiveEvidenceItem } from "../types";
 
 const NOW = Timestamp.fromDate(new Date("2026-09-21T12:00:00Z"));
@@ -76,7 +81,9 @@ test("an eligible, mappable item is selected with the block's subject/title as s
     objectiveEvidence: [evidenceItem({ objectiveId: "obj-1", outcome: "correct" })],
   });
   const items = selectMasteryEligibleItems(draft([b]));
-  assert.deepEqual(items, [{ objectiveId: "obj-1", subject: "math", skill: "Weighing produce", correct: true }]);
+  assert.deepEqual(items, [
+    { evidenceId: "b1:0", objectiveId: "obj-1", subject: "math", skill: "Weighing produce", correct: true },
+  ]);
 });
 
 test("day-level exclusion removes the item entirely from selection", () => {
@@ -164,4 +171,56 @@ test("Maizley-style demonstration evidence (pointing/matching/etc.) is represent
   });
   const items = selectMasteryEligibleItems(draft([b]));
   assert.equal(items.length, 1);
+});
+
+// --- evidenceItemId / idempotent re-selection (build-order step 6.1) ---
+
+test("evidenceItemId is deterministic and derived only from position — never from content", () => {
+  assert.equal(evidenceItemId("b1", 0), "b1:0");
+  assert.equal(evidenceItemId("b1", 0), evidenceItemId("b1", 0));
+  assert.notEqual(evidenceItemId("b1", 0), evidenceItemId("b1", 1));
+  assert.notEqual(evidenceItemId("b1", 0), evidenceItemId("b2", 0));
+});
+
+test("an already-applied evidenceId is excluded from selection — retrying mastery application cannot re-select the same item", () => {
+  const b = block({
+    blockId: "b1",
+    objectiveIds: ["obj-1"],
+    objectiveEvidence: [evidenceItem({ objectiveId: "obj-1", outcome: "correct" })],
+  });
+  const alreadyApplied = new Set([evidenceItemId("b1", 0)]);
+  assert.deepEqual(selectMasteryEligibleItems(draft([b]), alreadyApplied), []);
+});
+
+test("partial mastery application followed by retry does not duplicate evidence: only the NOT-yet-applied item is selected next", () => {
+  const b = block({
+    blockId: "b1",
+    objectiveIds: ["obj-1", "obj-2"],
+    objectiveEvidence: [
+      evidenceItem({ objectiveId: "obj-1", outcome: "correct" }), // index 0 — simulate already applied
+      evidenceItem({ objectiveId: "obj-2", outcome: "incorrect" }), // index 1 — still pending
+    ],
+  });
+  const firstPass = selectMasteryEligibleItems(draft([b]));
+  assert.equal(firstPass.length, 2);
+
+  // Simulate a crash after applying only the first item.
+  const alreadyApplied = new Set([firstPass[0].evidenceId]);
+  const retryPass = selectMasteryEligibleItems(draft([b]), alreadyApplied);
+  assert.equal(retryPass.length, 1);
+  assert.equal(retryPass[0].evidenceId, firstPass[1].evidenceId);
+  assert.equal(retryPass[0].objectiveId, "obj-2");
+});
+
+test("once every item in a block is marked applied, re-selecting that block yields nothing — reconciliation converges to empty", () => {
+  const b = block({
+    blockId: "b1",
+    objectiveIds: ["obj-1", "obj-2"],
+    objectiveEvidence: [
+      evidenceItem({ objectiveId: "obj-1", outcome: "correct" }),
+      evidenceItem({ objectiveId: "obj-2", outcome: "correct" }),
+    ],
+  });
+  const allApplied = new Set([evidenceItemId("b1", 0), evidenceItemId("b1", 1)]);
+  assert.deepEqual(selectMasteryEligibleItems(draft([b]), allApplied), []);
 });

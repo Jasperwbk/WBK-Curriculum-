@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { addDoc, collection, deleteDoc, doc, Timestamp, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
@@ -32,6 +32,8 @@ export function LogActivityPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState(0);
+  const [governedMinutes, setGovernedMinutes] = useState<number | null>(null);
+  const [acknowledgeSeparate, setAcknowledgeSeparate] = useState(false);
 
   const activeStudentId = studentId || students[0]?.uid || "";
   const { logs, loading: loadingLogs } = useRecentLogs(activeStudentId);
@@ -42,6 +44,36 @@ export function LogActivityPage() {
     resetForm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStudentId]);
+
+  // Prevention, not silent deduplication (build-order step 6.1): if this
+  // exact student/date already has an APPROVED end-of-day closeout
+  // covering this subject, warn before logging what might be the same
+  // activity a second time. Uses the deterministic evidencePackets doc id
+  // and a real block-subject match — never fuzzy text — and never blocks
+  // outright, since a homeschool day can legitimately have more than one
+  // activity in the same subject.
+  useEffect(() => {
+    setGovernedMinutes(null);
+    setAcknowledgeSeparate(false);
+    if (!profile || !activeStudentId || !date) return;
+    let cancelled = false;
+    const packetId = `${profile.familyId}_${activeStudentId}_${date}`;
+    getDoc(doc(db, "evidencePackets", packetId))
+      .then((snap) => {
+        if (cancelled || !snap.exists()) return;
+        const data = snap.data() as { status?: string; draft?: { blocks?: { subject: string; approvedMinutes: number | null }[] } };
+        if (data.status !== "approved") return;
+        const matching = (data.draft?.blocks ?? []).filter((b) => b.subject === subject);
+        if (matching.length === 0) return;
+        setGovernedMinutes(matching.reduce((sum, b) => sum + (b.approvedMinutes ?? 0), 0));
+      })
+      .catch(() => {
+        // Best-effort only — a lookup failure never blocks ordinary logging.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, activeStudentId, date, subject]);
 
   function resetForm() {
     setEditingId(null);
@@ -73,6 +105,10 @@ export function LogActivityPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!profile || !activeStudentId) return;
+    if (governedMinutes !== null && !acknowledgeSeparate) {
+      setError("Please confirm this is a separate activity, or adjust the date/subject, before saving.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -85,6 +121,7 @@ export function LogActivityPage() {
         durationMinutes,
         location,
         source: "curriculum",
+        provenance: "manual",
       };
       if (editingId) {
         await updateDoc(doc(db, "logs", editingId), data);
@@ -213,6 +250,28 @@ export function LogActivityPage() {
               />
             </label>
 
+            {governedMinutes !== null && (
+              <div
+                className="rounded-md border px-3 py-2 text-xs space-y-2"
+                style={{ borderColor: "var(--status-critical)", background: "var(--page)" }}
+              >
+                <p style={{ color: "var(--status-critical)" }}>
+                  This date already has {governedMinutes} approved {subjectLabel(subject)} minute
+                  {governedMinutes === 1 ? "" : "s"} from end-of-day closeout. If this is the same activity, don't
+                  log it again — the closeout is already authoritative. If it's a genuinely separate activity, you
+                  can still log it.
+                </p>
+                <label className="flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
+                  <input
+                    type="checkbox"
+                    checked={acknowledgeSeparate}
+                    onChange={(e) => setAcknowledgeSeparate(e.target.checked)}
+                  />
+                  Yes, this is a separate activity
+                </label>
+              </div>
+            )}
+
             {error && (
               <p className="text-sm" style={{ color: "var(--status-critical)" }}>
                 {error}
@@ -228,7 +287,7 @@ export function LogActivityPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || (governedMinutes !== null && !acknowledgeSeparate)}
                 className="flex-1 rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                 style={{ background: "var(--series-1)" }}
               >
