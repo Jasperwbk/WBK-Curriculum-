@@ -23,6 +23,8 @@ export interface FamilyMember {
   displayName: string;
   characterMapping: string | null;
   gradeLabel: string | null;
+  /** Stable presentation-identity id (build-order step 9.1) — the authoritative source for this student's PlacementKidKey; see lib/presentationIdentity.ts. null until a teacher has run assignPresentationIdentity for this account. */
+  presentationIdentityId: string | null;
 }
 
 /** A family member of EITHER role, for the identity-assignment panel (build-order step 9) — useFamilyStudents above stays student-only for its existing callers. */

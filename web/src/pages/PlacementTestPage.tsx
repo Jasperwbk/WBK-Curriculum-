@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { httpsCallable } from "firebase/functions";
 import { collection, deleteDoc, doc, getDocs, query, Timestamp, where } from "firebase/firestore";
 import { db, functions } from "../lib/firebase";
@@ -6,12 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { AppShell } from "../components/AppShell";
 import { subjectLabel } from "../lib/subjects";
-import {
-  PLACEMENT_TEST_ITEMS,
-  PUZZLE_LEVELS,
-  inferKidKey,
-  type PlacementKidKey,
-} from "../lib/placementTestItems";
+import { PLACEMENT_TEST_ITEMS, PUZZLE_LEVELS, type PlacementKidKey } from "../lib/placementTestItems";
+import { kidKeyForPresentationIdentity } from "../lib/presentationIdentity";
 
 interface AnswerState {
   correct: boolean;
@@ -50,7 +47,11 @@ export function PlacementTestPage() {
   const { profile } = useAuth();
   const { students, loading: loadingStudents } = useFamilyStudents();
   const eligible = useMemo(
-    () => students.filter((s) => inferKidKey(s.displayName) !== null),
+    () => students.filter((s) => kidKeyForPresentationIdentity(s.presentationIdentityId) !== null),
+    [students]
+  );
+  const needsSetup = useMemo(
+    () => students.filter((s) => s.presentationIdentityId === null),
     [students]
   );
 
@@ -109,7 +110,7 @@ export function PlacementTestPage() {
 
   const selectedStudent = eligible.find((s) => s.uid === selectedId) ?? null;
   const kidKey: PlacementKidKey | null = selectedStudent
-    ? inferKidKey(selectedStudent.displayName)
+    ? kidKeyForPresentationIdentity(selectedStudent.presentationIdentityId)
     : null;
   const items = kidKey ? PLACEMENT_TEST_ITEMS[kidKey] : [];
   const scored = kidKey === "millaray" || kidKey === "makaio";
@@ -192,7 +193,21 @@ export function PlacementTestPage() {
 
         {!loadingStudents && eligible.length === 0 && (
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            No matching student accounts found (expected Millaray, Makaio, or Maizley).
+            No eligible student accounts found yet.
+          </p>
+        )}
+
+        {needsSetup.length > 0 && (
+          <p
+            className="text-xs rounded-md border px-3 py-2 print:hidden"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--surface-2)" }}
+          >
+            Needs identity setup before they can appear here:{" "}
+            {needsSetup.map((s) => s.displayName).join(", ")} —{" "}
+            <Link to="/identity" style={{ color: "var(--series-1)" }}>
+              assign identities
+            </Link>
+            .
           </p>
         )}
 

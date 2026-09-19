@@ -740,7 +740,69 @@ deployed**:
   this codebase (no Firebase emulator in this sandbox). One rules change
   (new `helpRequests` collection) and two new indexes. Not deployed.
 
-Next up: step 10, once you've reviewed step 9.
+- **Step 9.1 — done, awaiting your review.** Removed remaining web-side
+  student identity inference.
+
+  Found and removed the 7 web-side `inferKidKey()` (display-name-substring)
+  call sites the step 9 report had flagged but deferred: StudentHomePage,
+  StudentPlacementPage, CheckInPage (x2), PlacementTestPage (x2),
+  UploadPage (x2). All now resolve a student's `PlacementKidKey` from their
+  stable `presentationIdentityId` via one small, shared, typed helper —
+  `lib/presentationIdentity.ts#kidKeyForPresentationIdentity` (extended
+  with `STUDENT_PRESENTATION_TO_KID_KEY`, mirroring the functions-side
+  registry) for teacher-facing pages selecting among multiple students, and
+  a new `hooks/useStudentIdentity.ts` for the two student-facing pages
+  resolving their OWN identity. Neither reads displayName, email,
+  capitalization, or substring matching — only `presentationIdentityId`.
+  `web/src/lib/placementTestItems.ts`'s `inferKidKey` function itself was
+  deleted (not just deprecated) once confirmed unused; the catalog/type
+  exports it shared the file with are untouched.
+
+  Backward compatibility, done the way the spec asked (never silently
+  fall back): a student-facing page with no bootstrapped identity now
+  shows `StudentSetupRequiredNotice` ("Your school profile needs to be
+  linked before this activity can start. Ask your teacher!") instead of
+  the retired display-name guess. Teacher-facing pages (CheckIn,
+  PlacementTest, Upload) list which family members still need identity
+  setup, with a link to `/identity`, instead of silently omitting them —
+  this is new UI added specifically for this step's requirement 4. The
+  functions-side `inferKidKey` fallback inside `resolveKidKeyForStudent`
+  (the backend compatibility path reviewed and accepted in step 9) was
+  deliberately left untouched — this step's scope was explicitly
+  "web-side," and that backend fallback is a separate, already-reviewed
+  decision.
+
+  Security: presentation identity stays presentation-only everywhere it
+  was touched — no new authorization boundary was introduced, no
+  capability/permission field was added to `PresentationIdentityInfo`, and
+  every mutation still goes through the existing `requireOwnerOrTeacher`/
+  `requireTeacher`/`assertKidKeyMatchesTarget` checks from step 9. Since
+  teacher-facing pages derive `userId` from the already-fetched, already
+  family-scoped `useFamilyStudents()` roster (never a free-typed or
+  route-supplied id), a client can't select a sibling's identity by
+  passing a different string — the same server-side cross-check from step
+  9 still backstops every placement submission regardless.
+
+  7 new unit tests (329 -> 336): `resolveKidKeyForStudent` misleading-
+  displayName / no-email-field / not-yet-bootstrapped-fallback tests, a
+  registry-parity test locking `web/src/lib/presentationIdentity.ts`'s
+  duplicated mapping to the functions-side canonical one (the two packages
+  have no shared build, so this is a mirror-plus-lock rather than a shared
+  import — anticipated and pre-approved by this step's own instructions),
+  and two source-scan tests proving zero remaining `inferKidKey(...)`
+  callers under `web/src` and that the function itself no longer exists
+  there. No web test runner exists in this repo (only `tsc`/`vite build`/
+  `oxlint`), so the web-side hooks/components themselves are verified by
+  typecheck + build + lint, not by executing them — same disclosed
+  limitation as every other web file in this project.
+
+  Full-repo search (`inferKidKey`, name/email substring patterns,
+  Millaray/Kira, Makaio/Ro/Rhoe, Maizely/Nova) found zero remaining live
+  identity-decision sites beyond the one already-reviewed backend
+  fallback; every other hit is UI copy, registry label data, or historical
+  doc/report text. No rules or index changes. Not deployed.
+
+Next up: step 10, once you've reviewed step 9.1.
 
 ---
 

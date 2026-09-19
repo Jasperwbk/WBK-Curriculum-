@@ -1,4 +1,5 @@
 import { useEffect, useState, type DragEvent } from "react";
+import { Link } from "react-router-dom";
 import {
   addDoc,
   collection,
@@ -16,7 +17,8 @@ import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { AppShell } from "../components/AppShell";
 import { parseCurriculumMarkdown, type ParsedWeek } from "../lib/parseCurriculumMarkdown";
-import { inferKidKey, type PlacementKidKey } from "../lib/placementTestItems";
+import type { PlacementKidKey } from "../lib/placementTestItems";
+import { kidKeyForPresentationIdentity } from "../lib/presentationIdentity";
 
 const QUARTERS: { value: string; label: string }[] = [
   { value: "q1", label: "Q1 — Fall" },
@@ -165,7 +167,8 @@ export function UploadPage() {
     }
   }
 
-  const eligibleKids = students.filter((s) => inferKidKey(s.displayName) !== null);
+  const eligibleKids = students.filter((s) => kidKeyForPresentationIdentity(s.presentationIdentityId) !== null);
+  const needsSetupKids = students.filter((s) => s.presentationIdentityId === null);
 
   return (
     <AppShell>
@@ -210,13 +213,20 @@ export function UploadPage() {
 
           {!loadingStudents && eligibleKids.length === 0 && (
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-              No matching student accounts found (expected Millaray, Makaio, or Maizley).
+              No eligible student accounts found yet.
+            </p>
+          )}
+
+          {needsSetupKids.length > 0 && (
+            <p className="text-xs rounded-md border px-3 py-2" style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--surface-2)" }}>
+              Needs identity setup before they can appear here: {needsSetupKids.map((s) => s.displayName).join(", ")} —{" "}
+              <Link to="/identity" style={{ color: "var(--series-1)" }}>assign identities</Link>.
             </p>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {eligibleKids.map((s) => {
-              const kidKey = inferKidKey(s.displayName) as PlacementKidKey;
+              const kidKey = kidKeyForPresentationIdentity(s.presentationIdentityId) as PlacementKidKey;
               const state = kidUploads[s.uid];
               return (
                 <div

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../lib/firebase";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { AppShell } from "../components/AppShell";
 import { subjectLabel } from "../lib/subjects";
 import { WEEK1_OBJECTIVES, type WeeklyObjective } from "../lib/weeklyObjectives";
-import { inferKidKey } from "../lib/placementTestItems";
+import { kidKeyForPresentationIdentity } from "../lib/presentationIdentity";
 
 type ScoredKidKey = "millaray" | "makaio";
 
@@ -19,9 +20,13 @@ export function CheckInPage() {
   const eligible = useMemo(
     () =>
       students.filter((s) => {
-        const key = inferKidKey(s.displayName);
+        const key = kidKeyForPresentationIdentity(s.presentationIdentityId);
         return key === "millaray" || key === "makaio";
       }),
+    [students]
+  );
+  const needsSetup = useMemo(
+    () => students.filter((s) => s.presentationIdentityId === null),
     [students]
   );
 
@@ -38,7 +43,9 @@ export function CheckInPage() {
   }, [eligible]);
 
   const selectedStudent = eligible.find((s) => s.uid === selectedId) ?? null;
-  const kidKey = selectedStudent ? (inferKidKey(selectedStudent.displayName) as ScoredKidKey | null) : null;
+  const kidKey = selectedStudent
+    ? (kidKeyForPresentationIdentity(selectedStudent.presentationIdentityId) as ScoredKidKey | null)
+    : null;
   const objectives = kidKey ? WEEK1_OBJECTIVES[kidKey] : [];
 
   const bySubject = useMemo(() => {
@@ -115,7 +122,21 @@ export function CheckInPage() {
 
         {!loadingStudents && eligible.length === 0 && (
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            No matching student accounts found (expected Millaray or Makaio).
+            No eligible student accounts found yet.
+          </p>
+        )}
+
+        {needsSetup.length > 0 && (
+          <p
+            className="text-xs rounded-md border px-3 py-2"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--surface-2)" }}
+          >
+            Needs identity setup before they can appear here:{" "}
+            {needsSetup.map((s) => s.displayName).join(", ")} —{" "}
+            <Link to="/identity" style={{ color: "var(--series-1)" }}>
+              assign identities
+            </Link>
+            .
           </p>
         )}
 

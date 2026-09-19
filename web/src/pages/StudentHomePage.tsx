@@ -5,19 +5,21 @@ import { db } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { StudentShell } from "../components/StudentShell";
 import { AskForHelpWidget } from "../components/AskForHelpWidget";
-import { inferKidKey } from "../lib/placementTestItems";
+import { StudentSetupRequiredNotice } from "../components/StudentSetupRequiredNotice";
+import { useStudentIdentity } from "../hooks/useStudentIdentity";
 
 type Status = "loading" | "not_started" | "pending_review" | "done" | "not_applicable";
 
 export function StudentHomePage() {
   const { user, profile } = useAuth();
+  const { status: identityStatus, kidKey } = useStudentIdentity();
   const [status, setStatus] = useState<Status>("loading");
 
-  const kidKey = profile ? inferKidKey(profile.displayName) : null;
   const selfService = kidKey === "millaray" || kidKey === "makaio";
 
   useEffect(() => {
     if (!user) return;
+    if (identityStatus === "setup_required") return;
     if (!selfService) {
       setStatus("not_applicable");
       return;
@@ -37,7 +39,7 @@ export function StudentHomePage() {
       else if (!pendingSnap.empty) setStatus("pending_review");
       else setStatus("not_started");
     })();
-  }, [user, selfService]);
+  }, [user, selfService, identityStatus]);
 
   return (
     <StudentShell>
@@ -49,19 +51,21 @@ export function StudentHomePage() {
           Hi {profile?.displayName}!
         </h1>
 
-        {status === "loading" && (
+        {identityStatus === "setup_required" && <StudentSetupRequiredNotice />}
+
+        {identityStatus === "ready" && status === "loading" && (
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Loading...
           </p>
         )}
 
-        {status === "not_applicable" && (
+        {identityStatus === "ready" && status === "not_applicable" && (
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Your teacher will work on this with you directly — nothing to do here right now.
           </p>
         )}
 
-        {status === "not_started" && (
+        {identityStatus === "ready" && status === "not_started" && (
           <div
             className="rounded-xl border p-5 space-y-3 shadow-sm"
             style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
@@ -80,7 +84,7 @@ export function StudentHomePage() {
           </div>
         )}
 
-        {status === "pending_review" && (
+        {identityStatus === "ready" && status === "pending_review" && (
           <div
             className="rounded-xl border p-5 shadow-sm"
             style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
@@ -92,7 +96,7 @@ export function StudentHomePage() {
           </div>
         )}
 
-        {status === "done" && (
+        {identityStatus === "ready" && status === "done" && (
           <div
             className="rounded-xl border p-5 shadow-sm"
             style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}

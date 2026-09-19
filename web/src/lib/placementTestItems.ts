@@ -60,13 +60,13 @@ export const PLACEMENT_TEST_ITEMS: Record<PlacementKidKey, readonly PlacementTes
 
 export const PUZZLE_LEVELS = ["No help", "A little guidance", "Needed hands-on help"] as const;
 
-export function inferKidKey(displayName: string): PlacementKidKey | null {
-  const normalized = displayName.trim().toLowerCase();
-  if (normalized.startsWith("millaray")) return "millaray";
-  if (normalized.startsWith("makaio")) return "makaio";
-  if (normalized.startsWith("maizley") || normalized.startsWith("maizely")) return "maizley";
-  return null;
-}
+// The display-name-substring-inference helper that used to live here was
+// removed (build-order step 9.1) — every web-side caller now resolves a student's
+// PlacementKidKey from their stable presentationIdentityId instead; see
+// lib/presentationIdentity.ts#kidKeyForPresentationIdentity and
+// hooks/useStudentIdentity.ts. The functions-side inferKidKey
+// (curriculum/placementTestItems.ts) is a separate, intentionally-kept
+// legacy compatibility fallback reviewed in step 9 — not affected by this.
 
 function item(
   id: string,

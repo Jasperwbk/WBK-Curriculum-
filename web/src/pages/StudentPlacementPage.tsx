@@ -4,7 +4,9 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { StudentShell } from "../components/StudentShell";
-import { PLACEMENT_TEST_ITEMS, inferKidKey } from "../lib/placementTestItems";
+import { StudentSetupRequiredNotice } from "../components/StudentSetupRequiredNotice";
+import { useStudentIdentity } from "../hooks/useStudentIdentity";
+import { PLACEMENT_TEST_ITEMS } from "../lib/placementTestItems";
 
 type ScoredKidKey = "millaray" | "makaio";
 type Step = "intro" | "test" | "submitting" | "done";
@@ -16,12 +18,22 @@ const submitPlacementResponsesFn = httpsCallable<
 
 export function StudentPlacementPage() {
   const { user, profile } = useAuth();
-  const kidKey = profile ? inferKidKey(profile.displayName) : null;
+  const { status: identityStatus, kidKey } = useStudentIdentity();
 
   const [step, setStep] = useState<Step>("intro");
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+
+  if (identityStatus === "setup_required") {
+    return (
+      <StudentShell>
+        <div className="mt-10">
+          <StudentSetupRequiredNotice />
+        </div>
+      </StudentShell>
+    );
+  }
 
   if (kidKey !== "millaray" && kidKey !== "makaio") {
     return (

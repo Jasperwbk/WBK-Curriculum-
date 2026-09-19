@@ -24,6 +24,7 @@ export function useFamilyStudents() {
         displayName: d.data().displayName,
         characterMapping: d.data().characterMapping ?? null,
         gradeLabel: d.data().gradeLabel ?? null,
+        presentationIdentityId: d.data().presentationIdentityId ?? null,
       }));
       members.sort((a, b) => a.displayName.localeCompare(b.displayName));
       setStudents(members);
