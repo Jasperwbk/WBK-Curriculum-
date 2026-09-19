@@ -1436,8 +1436,101 @@ deployed**:
   Firestore rules or index changes. Web unchanged this step. Not
   deployed.
 
-Next up: step 12 (Carousel Factoids), once you've reviewed step 11.3 —
-explicitly NOT started per this step's own instruction.
+- **Step 11.4 — done, awaiting your review.** Controlled Family-Test
+  Deployment Preparation. Inventory, index audit, a focused emulator
+  rules suite, and full build verification — no feature work, no deploy.
+
+  **Feature freeze acknowledged.** Nothing below adds Carousel Factoids,
+  rewards, a Jobs Board, automatic scheduling, the Historical Figure
+  artwork pipeline, or any cosmetic change. The one code change in this
+  step is a narrow index-config fix discovered BY this review (see
+  below), not new feature work.
+
+  **Firestore index audit found and fixed one real gap.** Cross-checked
+  every `.where()`/`.orderBy()` call in `functions/src` and `web/src`
+  against `firestore.indexes.json` field-by-field (not by trusting prior
+  reports). One mismatch: the teacher's help-request queue
+  (`useFamilyHelpRequests`, `HelpRequestsPage.tsx` — the Ask-a-Teacher
+  flow this family test explicitly exercises) queries `helpRequests`
+  with `familyId == X, orderBy(createdAt desc)`, but the declared index
+  was `[familyId, status, createdAt]` — an unused `status` field sits
+  between them, so Firestore cannot use that index as a prefix match for
+  this query. Live, this would have failed the first time Sarah opened
+  her help queue with a "the query requires an index" error. Fixed to
+  `[familyId, createdAt]`, the exact shape the real query uses; the
+  `[studentId, createdAt]` index for a student's own requests was already
+  correct and untouched. Also flagged, NOT changed (no functional
+  impact, a judgment call left to you): `logs`'s `[userId, subjectType,
+  date]` composite index has no query anywhere in the codebase that
+  filters by `subjectType` (`subjectType` is written to log entries but
+  never queried) — likely stale from an earlier iteration; harmless to
+  leave, free to remove later. Every other index checked (proposedDays,
+  evidencePackets, curriculumQualityIssues, certifications, dayDesignations,
+  uploads, extracurriculars, dayPlans, the two other `logs` indexes)
+  matches an actual query shape exactly. All indexes are single-collection,
+  non-composite-adjacent to any other pending index change — Firestore
+  index builds for a project this size (no live data volume yet for most
+  of these collections) should complete in at most a few minutes once
+  deployed, well before the first family-test session would hit them.
+
+  **New focused emulator rules suite**
+  (`functions/rules-tests/familyTestReadiness.rules.test.mjs`, `npm run
+  test:rules` runs both this and the step 11.3 systemRole suite manually
+  against a live local emulator) — 12 checks, all against the REAL
+  `firestore.rules`, all passing: a student cannot read a sibling's
+  published day (but can read their own); a student can never read
+  `proposedDays` regardless of whose day it is (teacher-only forever); a
+  student cannot write `studentBlockProgress` via any direct client
+  write, their own or a sibling's; a student cannot write or even read
+  an evidence packet (no student evidence view exists); nobody — student
+  or teacher — can write `masteryRecords` directly; a student cannot
+  browse the Curriculum Quality Feedback Queue; a student cannot read a
+  sibling's help request; a teacher can still certify/create curriculum
+  content/read certifications without friction; Sarah specifically
+  (no `systemRole` field at all) reads `proposedDays`/`evidencePackets`
+  exactly like the owner would, proving owner authority is never
+  required for shared educational work; account-administration data has
+  no Firestore collection to test against at all (Cloud-Function-only,
+  covered by the unit-test suite instead — noted explicitly rather than
+  skipped silently); `systemRole` remains immutable from every client
+  write; ordinary profile field edits still succeed for both a plain
+  teacher and the owner. No legitimate workflow failed — nothing needed
+  loosening or moving server-side.
+
+  **Full build verification, all green.** Functions: `tsc --noEmit`
+  clean, `eslint` clean, production build clean, 450/450 unit tests
+  passing. Web: `tsc -b` clean, `oxlint` clean (only pre-existing,
+  unrelated warnings — `set-state-in-effect`/an impure `Date.now` call in
+  code this step didn't touch), production build clean. Both new
+  emulator rules suites (7 + 12 = 19 checks) passing against a real local
+  Firestore emulator.
+
+  **Deployment surface, inventoried against the last commit that recorded
+  an actual deploy action (`edbf285`, 2026-09-10 — the best available
+  proxy from repo history; this sandbox cannot query the live project
+  directly to confirm what's actually running there today):** Hosting
+  (48 web files changed since then — full redeploy), Functions (88
+  functions/src files changed, all 40 exported callables affected —
+  full redeploy), Firestore Rules (216 lines changed — full redeploy),
+  Firestore Indexes (135 lines added plus this step's one-line fix —
+  full redeploy). Storage Rules: zero diff since that commit — does NOT
+  need redeployment. `ANTHROPIC_API_KEY` remains a Functions v2
+  `defineSecret` (used by `generatePlan`/`parseExtracurricular`/
+  `generateProposedDays`) — whether it's currently set against the live
+  project cannot be confirmed from this sandbox (no live access); it is
+  a hard prerequisite for those three callables specifically, unrelated
+  to anything else working.
+
+  Test count unchanged at 450 (this step's new coverage is the 19
+  emulator checks, a separate manually-run suite, by design not counted
+  in that number, exactly as steps 11.3 established). No production
+  code changed except the one-line `firestore.indexes.json` fix above.
+  Not deployed.
+
+Next up: step 12 (Carousel Factoids), once you've reviewed steps 11.3 and
+11.4 — explicitly NOT started per both steps' own instructions. Cory's
+explicit deployment approval is the next gating decision, not a further
+build step.
 
 ---
 
