@@ -71,6 +71,7 @@ export function buildPublishedDayProjection(
     familyId: approvedDay.familyId,
     studentId: approvedDay.studentId,
     date: approvedDay.date,
+    sourceKind: "governed",
     proposedDayId,
     proposalVersion: approvedDay.proposalVersion,
     itineraryMode: approvedDay.draft.itineraryMode,
@@ -87,4 +88,53 @@ export function buildPublishedDayProjection(
 /** Deterministic — one published projection per (family, student, date), same formula as evidencePacketStore.ts#evidencePacketDocId and identical id shape, so both collections key identically off a school day. */
 export function publishedDayDocId(familyId: string, studentId: string, date: string): string {
   return `${familyId}_${studentId}_${date}`;
+}
+
+export interface BuildFreeformPublishedDayProjectionParams {
+  familyId: string;
+  studentId: string;
+  date: string;
+  sourcePlanId: string;
+  title: string;
+  summary: string;
+  planText: string;
+  publishedAt: Timestamp;
+}
+
+/**
+ * The freeform ("Plan a day") sibling of buildPublishedDayProjection
+ * (build-order step 11.1) — same PublishedDay shape, same collection, same
+ * student-safe discipline (explicit field-by-field construction, never a
+ * spread), but sourced from dayPlans.ts's publishDayPlan instead of an
+ * approved ProposedDay. Deliberately excludes the teacher's own free-text
+ * `prompt` (dayPlans' own authoring instruction to Claude, e.g. private
+ * tone notes about a specific kid's day — never meant for a student to
+ * read) and every ProposedDay-only concept that doesn't exist for a
+ * freeform day: blocks, Jasper Message, Historical Figure Closing,
+ * certification grounding. `itineraryMode`/`proposalVersion` are fixed,
+ * inert defaults — there are no blocks to order and no regeneration
+ * history to version, so their values simply don't affect anything for a
+ * freeform day (computeEligibleBlocks on an empty block list is a no-op
+ * regardless of mode).
+ */
+export function buildFreeformPublishedDayProjection(
+  params: BuildFreeformPublishedDayProjectionParams
+): PublishedDay {
+  return {
+    familyId: params.familyId,
+    studentId: params.studentId,
+    date: params.date,
+    sourceKind: "freeform",
+    proposedDayId: null,
+    sourcePlanId: params.sourcePlanId,
+    proposalVersion: 1,
+    itineraryMode: "flexible",
+    title: params.title,
+    summary: params.summary,
+    planText: params.planText,
+    jasperMessage: null,
+    learningBlocks: [],
+    historicalFigureClosing: null,
+    publishedAt: params.publishedAt,
+  };
 }

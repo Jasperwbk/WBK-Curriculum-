@@ -1573,17 +1573,36 @@ export interface PublishedHistoricalFigureClosing {
   artworkAvailable: boolean;
 }
 
+/**
+ * Which publication pipeline produced this PublishedDay (build-order step
+ * 11.1 — "Connect Plan-a-Day to Student Today"). `publishedDays` is the
+ * ONE canonical student-facing collection regardless of source — this
+ * field is provenance/traceability only, never a second schema:
+ *   "governed"  — from proposedDays.ts's approveProposedDay (structured
+ *                 LearningBlocks, certification-grounded, Strict/Flexible).
+ *   "freeform"  — from dayPlans.ts's publishDayPlan (the teacher's
+ *                 free-text "Plan a day" tool — no blocks, no
+ *                 certification gate, no Jasper Message/Historical Figure
+ *                 Closing, since none of those concepts exist for a
+ *                 freeform one-off day).
+ */
+export type PublishedDaySourceKind = "governed" | "freeform";
+
 export interface PublishedDay {
   familyId: string;
   studentId: string;
   date: string; // ISO "YYYY-MM-DD"
-  proposedDayId: string;
+  sourceKind: PublishedDaySourceKind;
+  /** The governing ProposedDay's id — set only when sourceKind is "governed"; null for a freeform Plan-a-Day publication, which has no ProposedDay at all. */
+  proposedDayId: string | null;
+  /** The originating dayPlans doc's id — set only when sourceKind is "freeform". Lets publishDayPlan find and reconcile (delete) this plan's OTHER published docs when the teacher edits which students/date it targets. */
+  sourcePlanId?: string;
   proposalVersion: number;
   itineraryMode: ItineraryMode;
   title: string;
   summary: string;
   planText: string;
-  /** Resolved (edited ?? generated) — the student only ever sees the one final message, never both originals. */
+  /** Resolved (edited ?? generated) — the student only ever sees the one final message, never both originals. Always null for a freeform day (no Jasper Message concept there). */
   jasperMessage: string | null;
   learningBlocks: PublishedLearningBlock[];
   historicalFigureClosing: PublishedHistoricalFigureClosing | null;

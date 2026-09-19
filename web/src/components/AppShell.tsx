@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { buildLabel } from "../lib/buildInfo";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", end: true },
@@ -64,6 +65,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </header>
       <main className="p-4 max-w-3xl mx-auto print:p-0 print:max-w-full">{children}</main>
+      <footer className="px-4 pb-3 print:hidden">
+        <p
+          className="text-[10px] max-w-3xl mx-auto"
+          style={{ color: "var(--text-muted)" }}
+          title="Internal build identifier — which source commit this is running (build-order step 11.1)"
+        >
+          Build {buildLabel()}
+        </p>
+      </footer>
     </div>
   );
 }

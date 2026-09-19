@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
-import { buildPublishedDayProjection, publishedDayDocId } from "./publishedDay";
+import { buildFreeformPublishedDayProjection, buildPublishedDayProjection, publishedDayDocId } from "./publishedDay";
 import { HISTORICAL_FIGURE_CATALOG } from "./historicalFigureCatalog";
 import type { LearningBlock, ProposedDay, ProposedDayDraft } from "../types";
 
@@ -120,11 +120,13 @@ test("the published day exposes only the allowed top-level fields — never gove
       "proposalVersion",
       "proposedDayId",
       "publishedAt",
+      "sourceKind",
       "studentId",
       "summary",
       "title",
     ]
   );
+  assert.equal(published.sourceKind, "governed");
 });
 
 test("each published learning block exposes only the allowed fields — never sourceQuarterCertificationId/sourceWeeklyCertificationId/studentId/completionState (the plan-time placeholder, not live progress)", () => {
@@ -221,4 +223,80 @@ test("a closing plan referencing a figureId no longer in the catalog degrades to
     Timestamp.now()
   );
   assert.equal(published.historicalFigureClosing, null);
+});
+
+// --- buildFreeformPublishedDayProjection (build-order step 11.1 —
+// "Plan a day"/dayPlans.ts's publishDayPlan) ---
+
+function freeformParams(overrides: Partial<Parameters<typeof buildFreeformPublishedDayProjection>[0]> = {}) {
+  return {
+    familyId: "family-1",
+    studentId: "student-1",
+    date: "2026-09-21",
+    sourcePlanId: "plan-1",
+    title: "Camping Trip",
+    summary: "A day at Bennett Spring.",
+    planText: "Full freeform plan text.",
+    publishedAt: Timestamp.now(),
+    ...overrides,
+  };
+}
+
+test("buildFreeformPublishedDayProjection produces a PublishedDay keyed to the given (family, student, date)", () => {
+  const published = buildFreeformPublishedDayProjection(freeformParams());
+  assert.equal(published.familyId, "family-1");
+  assert.equal(published.studentId, "student-1");
+  assert.equal(published.date, "2026-09-21");
+  assert.equal(published.title, "Camping Trip");
+  assert.equal(published.summary, "A day at Bennett Spring.");
+  assert.equal(published.planText, "Full freeform plan text.");
+});
+
+test("buildFreeformPublishedDayProjection marks sourceKind \"freeform\", proposedDayId null, and carries the originating dayPlans id as sourcePlanId", () => {
+  const published = buildFreeformPublishedDayProjection(freeformParams({ sourcePlanId: "plan-42" }));
+  assert.equal(published.sourceKind, "freeform");
+  assert.equal(published.proposedDayId, null);
+  assert.equal(published.sourcePlanId, "plan-42");
+});
+
+test("buildFreeformPublishedDayProjection has no blocks, no Jasper Message, and no Historical Figure Closing — none of those concepts exist for a freeform day", () => {
+  const published = buildFreeformPublishedDayProjection(freeformParams());
+  assert.deepEqual(published.learningBlocks, []);
+  assert.equal(published.jasperMessage, null);
+  assert.equal(published.historicalFigureClosing, null);
+});
+
+test("buildFreeformPublishedDayProjection never includes the teacher's own free-text prompt — only the reviewed title/summary/planText", () => {
+  const published = buildFreeformPublishedDayProjection(freeformParams()) as unknown as Record<string, unknown>;
+  assert.equal("prompt" in published, false);
+});
+
+test("buildFreeformPublishedDayProjection's key set includes sourcePlanId (absent on a governed day) and never leaks a raw prompt", () => {
+  const freeform = buildFreeformPublishedDayProjection(freeformParams());
+  const freeformKeys = [...Object.keys(freeform)].sort();
+  assert.deepEqual(freeformKeys, [
+    "date",
+    "familyId",
+    "historicalFigureClosing",
+    "itineraryMode",
+    "jasperMessage",
+    "learningBlocks",
+    "planText",
+    "proposalVersion",
+    "proposedDayId",
+    "publishedAt",
+    "sourceKind",
+    "sourcePlanId",
+    "studentId",
+    "summary",
+    "title",
+  ]);
+});
+
+test("two freeform projections built for two different selected students never cross-contaminate each other's studentId", () => {
+  const forMillaray = buildFreeformPublishedDayProjection(freeformParams({ studentId: "millaray-uid" }));
+  const forMakaio = buildFreeformPublishedDayProjection(freeformParams({ studentId: "makaio-uid" }));
+  assert.equal(forMillaray.studentId, "millaray-uid");
+  assert.equal(forMakaio.studentId, "makaio-uid");
+  assert.notEqual(forMillaray.studentId, forMakaio.studentId);
 });

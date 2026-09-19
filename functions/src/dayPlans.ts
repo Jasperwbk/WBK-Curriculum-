@@ -1,8 +1,9 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireCaller, requireTeacher } from "./util/auth";
+import { classifyAnthropicError, throwDiagnosticError } from "./util/diagnostics";
 import { ALL_SUBJECTS, subjectLabel } from "./subjects";
 import { getMasteryRecordsForUser } from "./mastery";
 import { getQuarterAndWeek, loadWeekContent } from "./curriculum/loadCurriculumContent";
@@ -21,12 +22,14 @@ import {
 } from "./curriculum/dayDesignation";
 import { findActiveQuarantineReason } from "./curriculum/curriculumQuality";
 import { resolveKidKeyForStudent, requireKidKeyForStudent } from "./identity/presentationIdentity";
+import { buildFreeformPublishedDayProjection, publishedDayDocId } from "./curriculum/publishedDay";
 import type {
   CurriculumGovernanceMode,
   DayDesignationType,
   Family,
   MasteryRecord,
   PlacementKidKey,
+  PublishedDay,
   Quarter,
   Subject,
   UserProfile,
@@ -400,76 +403,108 @@ export const generatePlan = onCall<GeneratePlanRequest>(
 
     const client = new Anthropic({ apiKey: anthropicApiKey.value() });
 
-    const message = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1800,
-      system:
-        "You write a single day's homeschool plan for a family, from the teacher's own description of " +
-        "the day. The description might be an ordinary school day, or something special like a field trip, " +
-        "trip, or holiday — match your tone and educational weight to what the teacher actually asked for " +
-        "(e.g. 'light on the education, more on fun' means keep it short, playful, and low-pressure; a " +
-        "request for a regular focused day means a fuller plan). Where it fits naturally, weave in 1-3 " +
-        `concrete learning objectives and mention one of these standardized subjects if relevant: ${ALL_SUBJECTS.join(", ")}. ` +
-        "Include a short, optional worksheet or reflection-question idea only if it fits the day's tone — " +
-        "skip it for a pure-fun day.\n\n" +
-        "If per-student context below includes a block of 'this week's actual curriculum content,' that " +
-        "content is authoritative — it's the real, already-written curriculum for that kid's current week, " +
-        "not a suggestion. Base the day's actual topics, objectives, and activities on it directly rather " +
-        "than inventing your own unrelated topic, even a plausible-sounding one. Only fall back on your own " +
-        "general knowledge when no such block is present (e.g. the date falls outside the currently-written " +
-        "curriculum) or the teacher's own description explicitly asks for something different (a field trip, " +
-        "a sick day, etc. overrides the week's regular content for that one day).\n\n" +
-        "For a regular school day (not a pure field-trip/fun day), follow these standing rules:\n" +
-        "1. Open with the Pledge of Allegiance as a fixed first step, independent of whatever subject " +
-        "content follows.\n" +
-        "2. Shape each kid's academic block as: a short warm-up of retrieval questions from material " +
-        "they've already mastered (not today's new material) -> new teaching -> mixed/interleaved practice " +
-        "(today's objective plus 1-2 older mastered ones once there are 2+ live) -> a short, ungraded " +
-        "retrieval close-out. If per-student context below lists objectives 'still building,' the day's new " +
-        "teaching for that subject should re-teach that specific objective with a genuinely different framing " +
-        "or example before introducing anything new in that subject — don't just move on because the week's " +
-        "theme is moving on.\n" +
-        "3. The actual practice/work should be mostly physical — real printable worksheets the kids do by " +
-        "hand, favoring interactive/puzzle formats (maze, matching, word search, fill-in-the-scene) over a " +
-        "bare problem list, plus a cursive handwriting component where it fits naturally. Digital/on-screen " +
-        "content stays in a guidance role, like a teacher presenting, not where the actual work happens.\n" +
-        "4. If per-student context flags an objective as being aced easily (no struggle at all), don't just " +
-        "repeat it or fold it into ordinary review — give a genuinely harder stretch version of that specific " +
-        "skill today, so acing something too easily gets detected and probed further rather than just marked " +
-        "done. If a whole subject is flagged as 'ready to exceed grade-level,' don't plateau at grade-level " +
-        "review in that subject — introduce real above-grade-level material or a stretch goal there. The " +
-        "overall goal is closing whatever gaps a kid currently has first, then continuing to push them past " +
-        "typical grade-level expectations once caught up, not capping out once they're merely 'on level.'\n" +
-        "Interleaved/mixed practice is expected to produce more wrong answers and feel harder than blocked " +
-        "drilling — note that in the plan as the method working as intended, not a sign of falling behind, " +
-        "if it comes up.\n\n" +
-        "Respond with ONLY a single JSON object, no prose, no markdown fences, matching exactly this shape: " +
-        '{"title": string (short, e.g. "Camping Trip: Nature & Fire Safety"), ' +
-        '"summary": string (one sentence), ' +
-        '"planText": string (the full plan, plain text with blank lines between sections, ' +
-        "no markdown headers)}.",
-      messages: [
-        {
-          role: "user",
-          content:
-            `Date: ${date}\n` +
-            (names.length > 0 ? `Kids involved: ${names.join(", ")}\n` : "") +
-            `Teacher's description: ${prompt}` +
-            studentContextBlock,
-        },
-      ],
-    });
+    let message: Awaited<ReturnType<typeof client.messages.create>>;
+    try {
+      message = await client.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 1800,
+        system:
+          "You write a single day's homeschool plan for a family, from the teacher's own description of " +
+          "the day. The description might be an ordinary school day, or something special like a field trip, " +
+          "trip, or holiday — match your tone and educational weight to what the teacher actually asked for " +
+          "(e.g. 'light on the education, more on fun' means keep it short, playful, and low-pressure; a " +
+          "request for a regular focused day means a fuller plan). Where it fits naturally, weave in 1-3 " +
+          `concrete learning objectives and mention one of these standardized subjects if relevant: ${ALL_SUBJECTS.join(", ")}. ` +
+          "Include a short, optional worksheet or reflection-question idea only if it fits the day's tone — " +
+          "skip it for a pure-fun day.\n\n" +
+          "If per-student context below includes a block of 'this week's actual curriculum content,' that " +
+          "content is authoritative — it's the real, already-written curriculum for that kid's current week, " +
+          "not a suggestion. Base the day's actual topics, objectives, and activities on it directly rather " +
+          "than inventing your own unrelated topic, even a plausible-sounding one. Only fall back on your own " +
+          "general knowledge when no such block is present (e.g. the date falls outside the currently-written " +
+          "curriculum) or the teacher's own description explicitly asks for something different (a field trip, " +
+          "a sick day, etc. overrides the week's regular content for that one day).\n\n" +
+          "For a regular school day (not a pure field-trip/fun day), follow these standing rules:\n" +
+          "1. Open with the Pledge of Allegiance as a fixed first step, independent of whatever subject " +
+          "content follows.\n" +
+          "2. Shape each kid's academic block as: a short warm-up of retrieval questions from material " +
+          "they've already mastered (not today's new material) -> new teaching -> mixed/interleaved practice " +
+          "(today's objective plus 1-2 older mastered ones once there are 2+ live) -> a short, ungraded " +
+          "retrieval close-out. If per-student context below lists objectives 'still building,' the day's new " +
+          "teaching for that subject should re-teach that specific objective with a genuinely different framing " +
+          "or example before introducing anything new in that subject — don't just move on because the week's " +
+          "theme is moving on.\n" +
+          "3. The actual practice/work should be mostly physical — real printable worksheets the kids do by " +
+          "hand, favoring interactive/puzzle formats (maze, matching, word search, fill-in-the-scene) over a " +
+          "bare problem list, plus a cursive handwriting component where it fits naturally. Digital/on-screen " +
+          "content stays in a guidance role, like a teacher presenting, not where the actual work happens.\n" +
+          "4. If per-student context flags an objective as being aced easily (no struggle at all), don't just " +
+          "repeat it or fold it into ordinary review — give a genuinely harder stretch version of that specific " +
+          "skill today, so acing something too easily gets detected and probed further rather than just marked " +
+          "done. If a whole subject is flagged as 'ready to exceed grade-level,' don't plateau at grade-level " +
+          "review in that subject — introduce real above-grade-level material or a stretch goal there. The " +
+          "overall goal is closing whatever gaps a kid currently has first, then continuing to push them past " +
+          "typical grade-level expectations once caught up, not capping out once they're merely 'on level.'\n" +
+          "Interleaved/mixed practice is expected to produce more wrong answers and feel harder than blocked " +
+          "drilling — note that in the plan as the method working as intended, not a sign of falling behind, " +
+          "if it comes up.\n\n" +
+          "Respond with ONLY a single JSON object, no prose, no markdown fences, matching exactly this shape: " +
+          '{"title": string (short, e.g. "Camping Trip: Nature & Fire Safety"), ' +
+          '"summary": string (one sentence), ' +
+          '"planText": string (the full plan, plain text with blank lines between sections, ' +
+          "no markdown headers)}.",
+        messages: [
+          {
+            role: "user",
+            content:
+              `Date: ${date}\n` +
+              (names.length > 0 ? `Kids involved: ${names.join(", ")}\n` : "") +
+              `Teacher's description: ${prompt}` +
+              studentContextBlock,
+          },
+        ],
+      });
+    } catch (err) {
+      // The ANTHROPIC_API_KEY outage this diagnostic exists for surfaced
+      // only as "Couldn't generate a plan. Try again." — classifyAnthropicError
+      // reads the SDK error's own HTTP status (401/403 = bad/missing key,
+      // never string-matched) so the client's expandable detail panel can
+      // show PLAN-GEN-AUTH instead of a dead end. The user-facing message
+      // stays the same generic sentence on purpose (goal 6: normal UI
+      // stays understandable) — only the attached `details` are richer.
+      const { code, providerStatus, technicalMessage } = classifyAnthropicError(err);
+      throwDiagnosticError(
+        "internal",
+        "Couldn't generate a plan. Try again.",
+        "plan-generation",
+        code,
+        technicalMessage,
+        providerStatus
+      );
+    }
 
     const textBlock = message.content.find((block) => block.type === "text");
     if (!textBlock || textBlock.type !== "text") {
-      throw new HttpsError("internal", "Claude returned no parseable text.");
+      throwDiagnosticError(
+        "internal",
+        "Couldn't generate a plan. Try again.",
+        "plan-generation",
+        "PLAN-GEN-PARSE-ERROR",
+        "The AI response contained no readable text block."
+      );
     }
 
     let parsed: GeneratedPlan;
     try {
       parsed = JSON.parse(extractJson(textBlock.text));
-    } catch {
-      throw new HttpsError("internal", "Could not parse Claude's response as JSON.");
+    } catch (err) {
+      throwDiagnosticError(
+        "internal",
+        "Couldn't generate a plan. Try again.",
+        "plan-generation",
+        "PLAN-GEN-PARSE-ERROR",
+        `Could not parse the AI response as JSON: ${err instanceof Error ? err.message : "unknown parse error"}`
+      );
     }
 
     return {
@@ -489,3 +524,184 @@ function extractJson(text: string): string {
   }
   return text.slice(start, end + 1);
 }
+
+interface PublishDayPlanRequest {
+  dayPlanId: string;
+  date: string;
+  studentIds: string[];
+  title: string;
+  summary: string;
+  planText: string;
+}
+
+/**
+ * Connects "Plan a day" to the Student Today system (build-order step
+ * 11.1) — the ONE thing "Save & publish" was always supposed to do but
+ * never did: dayPlans.ts had no writer of `publishedDays` at all, so a
+ * successfully generated/saved freeform plan never reached any student's
+ * Today screen, no matter how many times the teacher pressed the button.
+ * Never touches `dayPlans` itself — the web client still owns that write
+ * directly (its own teacher-facing authoring/history record, unaffected
+ * by this callable) — this ONLY produces the student-safe projection,
+ * through the exact same `publishedDays` collection and doc-id formula
+ * the governed Two-day-ahead pipeline's approveProposedDay already writes
+ * (curriculum/publishedDay.ts), so there is exactly one canonical student
+ * publication path regardless of which teacher tool produced the content.
+ *
+ * Multi-student (section 2): one PublishedDay doc is written PER selected
+ * student, each independently keyed by (familyId, studentId, date) — a
+ * sibling never has any way to reach another's doc, since each is a
+ * separate document at a separate id, built by a function
+ * (buildFreeformPublishedDayProjection) that takes exactly one studentId
+ * and cannot see any other. Every studentId is verified server-side
+ * (real account, same family, role "student") before anything is
+ * written — the client's own already-family-scoped roster
+ * (useFamilyStudents) is never trusted as the security boundary by
+ * itself.
+ *
+ * Reconciliation: also deletes any of THIS SAME plan's previously-
+ * published docs that no longer match the current (date, studentIds) —
+ * covers a teacher editing an already-published plan to remove a student
+ * or change its date, so a removed/moved student never keeps seeing a day
+ * the teacher took them off of.
+ *
+ * Date visibility is enforced entirely on the READ side (a student only
+ * ever queries "today," see StudentTodaySection.tsx) — this callable
+ * places no restriction on which date may be published, exactly like the
+ * governed pipeline's approveProposedDay.
+ */
+export const publishDayPlan = onCall<PublishDayPlanRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const { dayPlanId, date, studentIds, title, summary, planText } = request.data ?? {};
+
+  if (typeof dayPlanId !== "string" || dayPlanId.length === 0) {
+    throw new HttpsError("invalid-argument", "dayPlanId is required.");
+  }
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(date).getTime())) {
+    throw new HttpsError("invalid-argument", "A valid date (YYYY-MM-DD) is required.");
+  }
+  if (!Array.isArray(studentIds) || studentIds.length === 0 || !studentIds.every((id) => typeof id === "string" && id.length > 0)) {
+    throw new HttpsError("invalid-argument", "At least one student must be selected.");
+  }
+  if (typeof title !== "string" || title.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "A title is required.");
+  }
+  if (typeof planText !== "string" || planText.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "Plan text is required.");
+  }
+  const safeSummary = typeof summary === "string" ? summary : "";
+
+  const db = getFirestore();
+  const familyId = caller.profile.familyId;
+  const uniqueStudentIds = [...new Set(studentIds)];
+
+  // Never trust client-supplied studentIds directly — each one must be a
+  // real, current student account in the caller's own family (same
+  // discipline as identity/presentationIdentity.ts's assignPresentationIdentity).
+  const profileSnaps = await Promise.all(uniqueStudentIds.map((id) => db.collection("users").doc(id).get()));
+  for (let i = 0; i < uniqueStudentIds.length; i++) {
+    const snap = profileSnaps[i];
+    if (!snap.exists) {
+      throwDiagnosticError(
+        "not-found",
+        "Couldn't publish — one of the selected students no longer exists.",
+        "plan-publication",
+        "PLAN-PUBLISH-VALIDATION",
+        `No such user: ${uniqueStudentIds[i]}.`
+      );
+    }
+    const targetProfile = snap.data() as UserProfile;
+    if (targetProfile.familyId !== familyId || targetProfile.role !== "student") {
+      throwDiagnosticError(
+        "permission-denied",
+        "Couldn't publish — one of the selected students isn't part of your family.",
+        "plan-publication",
+        "PLAN-PUBLISH-VALIDATION",
+        `User ${uniqueStudentIds[i]} is not a student in family ${familyId}.`
+      );
+    }
+  }
+
+  const now = Timestamp.now();
+  const batch = db.batch();
+
+  // Reconcile: remove any doc THIS plan previously published that no
+  // longer matches the plan's current (date, studentIds) — a changed date
+  // or a deselected student must not leave a stale published day visible.
+  const priorSnap = await db
+    .collection("publishedDays")
+    .where("familyId", "==", familyId)
+    .where("sourcePlanId", "==", dayPlanId)
+    .get();
+  for (const doc of priorSnap.docs) {
+    const data = doc.data() as PublishedDay;
+    const stillWanted = data.date === date && uniqueStudentIds.includes(data.studentId);
+    if (!stillWanted) {
+      batch.delete(doc.ref);
+    }
+  }
+
+  for (const studentId of uniqueStudentIds) {
+    const ref = db.collection("publishedDays").doc(publishedDayDocId(familyId, studentId, date));
+    batch.set(
+      ref,
+      buildFreeformPublishedDayProjection({
+        familyId,
+        studentId,
+        date,
+        sourcePlanId: dayPlanId,
+        title: title.trim(),
+        summary: safeSummary,
+        planText,
+        publishedAt: now,
+      })
+    );
+  }
+
+  await batch.commit();
+
+  return { date, studentIds: uniqueStudentIds };
+});
+
+interface UnpublishDayPlanRequest {
+  dayPlanId: string;
+}
+
+/**
+ * The other half of the reconciliation story (build-order step 11.1,
+ * section 4): deleting a `dayPlans` doc from the "Saved plans" list must
+ * not leave an orphaned `publishedDays` doc a student can still see.
+ * Called from PlanDayPage.tsx's delete action BEFORE the dayPlans doc
+ * itself is deleted client-side. A plan that was never published (no
+ * matching sourcePlanId) is a no-op, not an error.
+ */
+export const unpublishDayPlan = onCall<UnpublishDayPlanRequest>(async (request) => {
+  const caller = await requireCaller(request);
+  requireTeacher(caller);
+
+  const dayPlanId = request.data?.dayPlanId;
+  if (typeof dayPlanId !== "string" || dayPlanId.length === 0) {
+    throw new HttpsError("invalid-argument", "dayPlanId is required.");
+  }
+
+  const db = getFirestore();
+  const snap = await db
+    .collection("publishedDays")
+    .where("familyId", "==", caller.profile.familyId)
+    .where("sourcePlanId", "==", dayPlanId)
+    .get();
+
+  if (snap.empty) {
+    return { deletedCount: 0 };
+  }
+
+  const batch = db.batch();
+  for (const doc of snap.docs) {
+    batch.delete(doc.ref);
+  }
+  await batch.commit();
+
+  return { deletedCount: snap.size };
+});

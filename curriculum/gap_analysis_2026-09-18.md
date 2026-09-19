@@ -1079,7 +1079,135 @@ deployed**:
   limitation as every prior step (no Firebase emulator, no web test
   runner in this repo). Not deployed.
 
-Next up: step 12 (Carousel Factoids), once you've reviewed step 11.
+- **Step 11.1 — done, awaiting your review.** Connect Plan-a-Day to
+  Student Today. Diagnosed during a live family-test smoke check: the
+  teacher's "Plan a day" screen (`/plan`) successfully generates and
+  saves a plan, but nothing a student's Today screen reads was ever
+  written from it — "Plan a day" wrote only the legacy `dayPlans`
+  collection; Student Today reads only `publishedDays`, written solely by
+  the separate "Two-day-ahead" pipeline's `approveProposedDay`. Two
+  different, unconnected teacher tools, confirmed by a full-source search
+  showing zero readers of `dayPlans` outside `PlanDayPage.tsx` itself.
+
+  Per your explicit decision, unified around the existing `publishedDays`
+  architecture rather than teaching the family to use a different screen
+  or building a second student-facing system. `PublishedDay` gained a
+  `sourceKind: "governed" | "freeform"` provenance field (widened
+  `proposedDayId` to `string | null` — null only for a freeform day, which
+  has no ProposedDay at all) — one canonical collection/schema, two
+  writers. `curriculum/publishedDay.ts` gained
+  `buildFreeformPublishedDayProjection`, the freeform sibling of the
+  existing `buildPublishedDayProjection`: same student-safe, explicit
+  field-by-field construction, deliberately excluding the teacher's own
+  free-text `prompt` (private authoring notes, never meant for a student)
+  and every ProposedDay-only concept a freeform day doesn't have (blocks,
+  Jasper Message, Historical Figure Closing, certification grounding —
+  all null/empty, never fabricated).
+
+  New `dayPlans.ts` callable, `publishDayPlan` (teacher-only): takes the
+  already-reviewed title/summary/planText plus the selected `studentIds`
+  and `date`, verifies each student server-side (real account, same
+  family, role "student" — never trusts the client's own
+  already-family-scoped list as the actual security boundary), and writes
+  one `PublishedDay` doc per student via the shared `publishedDayDocId`
+  formula — multi-student publication, one document per sibling, no
+  document any sibling can reach but their own. Also reconciles: deletes
+  any of the SAME plan's previously-published docs that no longer match
+  the current (date, studentIds) — so editing an already-published plan
+  to remove a student, or move its date, doesn't leave a stale day
+  visible to someone the teacher took off it. A new `unpublishDayPlan`
+  callable mirrors this for outright deletion, wired into
+  `PlanDayPage.tsx`'s existing Delete action (best-effort — a cleanup
+  failure doesn't block the teacher's own delete). Neither callable
+  touches `dayPlans` itself; the web client still owns that write
+  directly, unchanged, as the teacher's own authoring/history record.
+  `firestore.rules`/`firestore.indexes.json` needed NO changes — both new
+  callables use the admin SDK (bypass rules, exactly like
+  `approveProposedDay`), the one new query is pure multi-field-equality
+  (`familyId` + `sourcePlanId`), and Firestore auto-indexes that without a
+  composite index. Found, but deliberately left alone: `dayPlans` already
+  carries its own dormant, never-consumed student-owner-read rule
+  (`resource.data.studentIds.hasAny([request.auth.uid])`) — now formally
+  superseded by `publishedDays`; documented rather than removed, since
+  touching it wasn't necessary for this fix and the instruction was "do
+  not weaken rules," not "prune every unused one."
+
+  Date visibility (section 3): re-verified the existing promise ("a
+  student only sees a plan once its date arrives") holds structurally
+  because `publishedDays` is keyed by an exact date string and
+  `StudentTodaySection` only ever queries "today" — but found a real bug
+  in what "today" meant: `todayDateString()` used
+  `new Date().toISOString().slice(0, 10)`, which reports the UTC calendar
+  date, not the family's local one. West of UTC (every US timezone), that
+  rolls over to tomorrow's date hours before local midnight — e.g. Central
+  time (UTC-6) would already read "tomorrow" by 6pm local, meaning a day
+  scheduled for tomorrow could appear a day EARLY on the student's own
+  clock, the exact thing this promise forbids. Fixed by computing the date
+  from local `Date` getters instead. The same UTC-vs-local pattern exists
+  in several other pages' "default to today" convenience values
+  (LogActivityPage, PlacementTestPage, EndOfDayClosingPage,
+  ProposedDaysPage's fallback) — those are pre-existing, out of this
+  fix's scope (they're editable defaults a teacher can change, not a
+  silent gate a student can't see around), flagged here rather than
+  silently touched.
+
+  Developer diagnostics (section 6): the ANTHROPIC_API_KEY outage
+  surfaced only as "Couldn't generate a plan. Try again," with the real
+  cause visible only in Cloud Functions logs this sandbox couldn't reach.
+  New `functions/src/util/diagnostics.ts`: a structured `DiagnosticDetail`
+  (stable errorId, subsystem/stage, a short controlled code, timestamp,
+  provider HTTP status when available, and a sanitized — never a raw
+  stack trace, key material unconditionally redacted — technical message)
+  attached to `HttpsError`'s `details` field, which Firebase's client SDK
+  delivers back verbatim without it being part of the visible message.
+  `classifyAnthropicError` reads the Anthropic SDK error's own `.status`
+  (401/403 -> `PLAN-GEN-AUTH`, 429 -> `PLAN-GEN-RATE-LIMIT`, other ->
+  `PLAN-GEN-PROVIDER-ERROR`) — by STATUS CODE, never by string-matching a
+  message that could vary. `generatePlan`'s Anthropic call and JSON-parse
+  step are now wrapped accordingly; the user-facing message is
+  UNCHANGED on purpose (normal UI stays understandable) — only the
+  attached diagnostic is richer. Web side: `lib/diagnostics.ts`
+  (`extractDiagnosticDetail` recognizes a real DiagnosticDetail on
+  `error.details` or builds a best-effort fallback for anything else) and
+  `DiagnosticDetails.tsx` (a collapsed-by-default `<details>` panel with a
+  one-click Copy button producing one self-contained, paste-able block —
+  errorId/stage/code/timestamp/message plus the build identifier below),
+  wired into `PlanDayPage.tsx`'s generate/publish failure paths.
+
+  Build identifier (section 7): confirmed by the prior pre-deployment
+  audit as a real, disclosed gap — no way existed to prove which commit a
+  deployed build was serving. `vite.config.ts` now injects a short git SHA
+  (`git rev-parse --short HEAD`, falling back to `"unknown"` rather than
+  failing the build when git isn't available) and a build timestamp as
+  literal `define` constants, read by the new `lib/buildInfo.ts` and
+  surfaced unobtrusively in `AppShell.tsx`'s footer (small, muted,
+  teacher/internal screens only — never shown to a student, whose
+  `StudentShell` is a separate component this was never added to).
+  Verified the built bundle actually embeds the current commit's SHA
+  (`1fc955f`) by grepping the production build output directly, not just
+  assuming the wiring works.
+
+  25 new backend unit tests (397 -> 422): `buildFreeformPublishedDayProjection`
+  (doc-id/field-sourcing, `sourceKind`/`sourcePlanId`/null-`proposedDayId`,
+  no blocks/Jasper Message/Historical Figure Closing, the teacher's
+  `prompt` never leaking, an exact key-set assertion, two-student
+  cross-contamination check), `diagnostics.ts` (detail shape, key
+  redaction, truncation, the HttpsError/details wiring, every
+  `classifyAnthropicError` branch), and source-scan tests on `dayPlans.ts`
+  proving `publishDayPlan`/`unpublishDayPlan` are teacher-only, validate
+  every input, verify family/role per student server-side, use the shared
+  doc-id formula, never write to `dayPlans` themselves, correctly
+  reconcile stale docs, and that `generatePlan`'s diagnostic paths never
+  reference the raw API key. All 397 pre-existing tests preserved. Web:
+  verified via `tsc -b`/`oxlint`/`vite build` (still no web test runner in
+  this repo — same disclosed limitation as every prior step) plus a
+  direct grep of the built bundle confirming the build-id injection
+  actually works, not just compiles. No Firestore rules or index changes.
+  `proposedDays.ts`/`approveProposedDay` (the governed Two-day-ahead
+  pipeline) untouched — confirmed zero regression risk by diff, not just
+  by intent. Not deployed.
+
+Next up: step 12 (Carousel Factoids), once you've reviewed step 11.1.
 
 ---
 

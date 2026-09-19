@@ -26,8 +26,25 @@ const ELIGIBILITY_REASON_LABEL: Record<string, string> = {
   enrichment_locked_until_required_complete: "Unlocks once today's required work is done",
 };
 
+/**
+ * The family's own local calendar date — NEVER `toISOString().slice(0,
+ * 10)` (build-order step 11.1, section 3: "a student sees the school day
+ * when its scheduled date arrives — never a day early"). `toISOString()`
+ * reports UTC, so anywhere west of UTC (all US timezones) it silently
+ * rolls over to tomorrow's date hours before local midnight — e.g. in
+ * Central time (UTC-6), "today" would already read as tomorrow by 6pm.
+ * Since a PublishedDay's own doc id is keyed by an exact date string, that
+ * UTC/local mismatch would make a day appear a day EARLY, which is
+ * exactly what this promise forbids. Built from local Date getters
+ * instead, so it always matches the calendar day on the family's own
+ * clock.
+ */
 function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -88,7 +105,7 @@ export function StudentTodaySection() {
   const hasRequiredMovement = publishedDay.learningBlocks.some((b) => b.subject === "physical_education");
 
   async function setBlockState(block: PublishedLearningBlock, state: StudentBlockProgressState) {
-    if (!user || !publishedDay) return;
+    if (!user || !publishedDay || !publishedDay.proposedDayId) return;
     setPendingBlockId(block.blockId);
     setActionError(null);
     try {
@@ -229,7 +246,7 @@ export function StudentTodaySection() {
               {(eligible || isCompleted) && (
                 <AskForHelpWidget
                   compact
-                  reference={{ proposedDayId: publishedDay.proposedDayId, blockId: block.blockId }}
+                  reference={{ proposedDayId: publishedDay.proposedDayId ?? undefined, blockId: block.blockId }}
                 />
               )}
             </div>

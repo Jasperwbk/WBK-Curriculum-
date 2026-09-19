@@ -38,11 +38,17 @@ export interface PublishedHistoricalFigureClosing {
   artworkAvailable: boolean;
 }
 
+export type PublishedDaySourceKind = "governed" | "freeform";
+
 export interface PublishedDay {
   familyId: string;
   studentId: string;
   date: string;
-  proposedDayId: string;
+  sourceKind: PublishedDaySourceKind;
+  /** Set only when sourceKind is "governed" — null for a freeform "Plan a day" publication, which has no ProposedDay at all. */
+  proposedDayId: string | null;
+  /** Set only when sourceKind is "freeform" — the originating dayPlans doc's id. */
+  sourcePlanId?: string;
   proposalVersion: number;
   itineraryMode: ItineraryMode;
   title: string;

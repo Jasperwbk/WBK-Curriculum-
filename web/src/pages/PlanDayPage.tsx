@@ -6,6 +6,8 @@ import { useAuth } from "../context/AuthContext";
 import { useFamilyStudents } from "../hooks/useFamilyStudents";
 import { useDayPlans, type DayPlan } from "../hooks/useDayPlans";
 import { AppShell } from "../components/AppShell";
+import { DiagnosticDetails } from "../components/DiagnosticDetails";
+import { extractDiagnosticDetail, type DiagnosticDetail } from "../lib/diagnostics";
 
 function tomorrowIso(): string {
   const d = new Date();
@@ -24,6 +26,25 @@ const generatePlanFn = httpsCallable<
   GeneratePlanResponse
 >(functions, "generatePlan");
 
+// Connects "Plan a day" to the Student Today system (build-order step
+// 11.1) — Save & Publish always wrote to the legacy `dayPlans` collection
+// (still does, below, as the teacher's own authoring/history record), but
+// nothing ever fed the canonical `publishedDays` collection Student Today
+// actually reads. publishDayPlanFn is that missing connection; it takes
+// the already-reviewed title/summary/planText and writes the same
+// student-safe projection shape the governed Two-day-ahead pipeline uses,
+// through curriculum/publishedDay.ts's buildFreeformPublishedDayProjection
+// — one canonical publication path regardless of which tool produced it.
+const publishDayPlanFn = httpsCallable<
+  { dayPlanId: string; date: string; studentIds: string[]; title: string; summary: string; planText: string },
+  { date: string; studentIds: string[] }
+>(functions, "publishDayPlan");
+
+const unpublishDayPlanFn = httpsCallable<{ dayPlanId: string }, { deletedCount: number }>(
+  functions,
+  "unpublishDayPlan"
+);
+
 export function PlanDayPage() {
   const { profile } = useAuth();
   const { students, loading: loadingStudents } = useFamilyStudents();
@@ -39,6 +60,9 @@ export function PlanDayPage() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generateDiagnostic, setGenerateDiagnostic] = useState<DiagnosticDetail | null>(null);
+  const [publishNotice, setPublishNotice] = useState<string | null>(null);
+  const [publishDiagnostic, setPublishDiagnostic] = useState<DiagnosticDetail | null>(null);
 
   // Default to every student in the family once they've loaded.
   useEffect(() => {
@@ -59,6 +83,8 @@ export function PlanDayPage() {
     setTitle("");
     setSummary("");
     setPlanText("");
+    setPublishNotice(null);
+    setPublishDiagnostic(null);
   }
 
   async function handleGenerate() {
@@ -68,6 +94,7 @@ export function PlanDayPage() {
     }
     setGenerating(true);
     setError(null);
+    setGenerateDiagnostic(null);
     try {
       const selected = students.filter((s) => selectedStudentIds.includes(s.uid));
       const names = selected.map((s) => s.displayName);
@@ -79,9 +106,14 @@ export function PlanDayPage() {
     } catch (err) {
       // Surfaces a specific backend message when there is one (e.g. the
       // certification gate explaining exactly which kid/week needs
-      // certifying) instead of always showing a generic failure.
+      // certifying) instead of always showing a generic failure. The
+      // normal message stays generic for an AI-provider failure — the
+      // expandable diagnostic panel below carries the specific code (e.g.
+      // PLAN-GEN-AUTH), so a bad ANTHROPIC_API_KEY no longer looks
+      // identical to every other failure.
       const message = err instanceof Error && err.message ? err.message : null;
       setError(message ?? "Couldn't generate a plan. Try again.");
+      setGenerateDiagnostic(extractDiagnosticDetail(err, "plan-generation"));
     } finally {
       setGenerating(false);
     }
@@ -95,6 +127,8 @@ export function PlanDayPage() {
     }
     setSaving(true);
     setError(null);
+    setPublishNotice(null);
+    setPublishDiagnostic(null);
     try {
       const data = {
         familyId: profile.familyId,
@@ -106,12 +140,33 @@ export function PlanDayPage() {
         summary,
         planText,
       };
+      const dayPlanId = editingId ?? (await addDoc(collection(db, "dayPlans"), data)).id;
       if (editingId) {
         await updateDoc(doc(db, "dayPlans", editingId), data);
-      } else {
-        await addDoc(collection(db, "dayPlans"), data);
       }
-      resetForm();
+
+      // The actual connection to Student Today (build-order step 11.1):
+      // a failure here does NOT undo the dayPlans save above — the
+      // teacher's plan is safely saved either way — but it does mean
+      // students won't see it yet, so it's surfaced as its own distinct
+      // notice rather than silently swallowed.
+      try {
+        const selectedNames = students
+          .filter((s) => selectedStudentIds.includes(s.uid))
+          .map((s) => s.displayName);
+        await publishDayPlanFn({ dayPlanId, date, studentIds: selectedStudentIds, title, summary, planText });
+        setPublishNotice(`✅ Saved and published to ${selectedNames.join(", ") || "the selected student(s)"}.`);
+      } catch (err) {
+        setPublishDiagnostic(extractDiagnosticDetail(err, "plan-publication"));
+        const message = err instanceof Error && err.message ? err.message : null;
+        setError(
+          `Saved, but couldn't publish to students: ${message ?? "unknown error"}. Your plan wasn't lost — try saving again.`
+        );
+      }
+
+      if (!editingId) {
+        resetForm();
+      }
     } catch {
       setError("Couldn't save that plan. Try again.");
     } finally {
@@ -127,11 +182,22 @@ export function PlanDayPage() {
     setTitle(plan.title);
     setSummary(plan.summary);
     setPlanText(plan.planText);
+    setPublishNotice(null);
+    setPublishDiagnostic(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleDelete(planId: string) {
     if (!confirm("Delete this plan? This can't be undone.")) return;
+    try {
+      // Best-effort: an unpublish failure here shouldn't block the
+      // teacher from deleting their own record — worst case a stale
+      // published day needs a manual follow-up, which is far less bad
+      // than a broken Delete button in a family-test build.
+      await unpublishDayPlanFn({ dayPlanId: planId });
+    } catch (err) {
+      console.error("unpublishDayPlan failed during delete:", err);
+    }
     await deleteDoc(doc(db, "dayPlans", planId));
     if (editingId === planId) resetForm();
   }
@@ -252,8 +318,19 @@ export function PlanDayPage() {
           )}
 
           {error && (
-            <p className="text-sm" style={{ color: "var(--status-critical)" }}>
-              {error}
+            <div className="space-y-1">
+              <p className="text-sm" style={{ color: "var(--status-critical)" }}>
+                {error}
+              </p>
+              {(generateDiagnostic || publishDiagnostic) && (
+                <DiagnosticDetails detail={(publishDiagnostic ?? generateDiagnostic)!} />
+              )}
+            </div>
+          )}
+
+          {publishNotice && !error && (
+            <p className="text-sm" style={{ color: "var(--status-good)" }}>
+              {publishNotice}
             </p>
           )}
 
@@ -264,7 +341,7 @@ export function PlanDayPage() {
               className="flex-1 rounded-md px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
               style={{ background: "var(--series-1)" }}
             >
-              {saving ? "Saving..." : editingId ? "Update plan" : "Save & publish"}
+              {saving ? "Saving..." : editingId ? "Update & publish" : "Save & publish"}
             </button>
             {editingId && (
               <button
