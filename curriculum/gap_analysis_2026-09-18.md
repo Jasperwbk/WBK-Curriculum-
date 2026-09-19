@@ -1332,7 +1332,112 @@ deployed**:
   something this codebase can perform for itself, and not performed
   here. Not deployed.
 
-Next up: step 12 (Carousel Factoids), once you've reviewed step 11.1 and 11.2.
+- **Step 11.3 — done, awaiting your review.** Test-baseline reconciliation,
+  emulator-verified Firestore rules review, live-account smoke-test plan,
+  and a re-audit of Family Test Readiness under the accepted account-
+  governance model. No production code changed in this step; no deploy.
+
+  **Reconciliation (373 -> 422).** Traced by checking out `functions/src`
+  at each historical commit in isolation (`rm -rf functions/src && git
+  checkout <commit> -- functions/src`, then a clean build+test run —
+  a scoped `git checkout` alone does not delete files absent at the
+  target commit, so the `rm -rf` first is required or later files
+  silently contaminate the count) rather than relying on memory or prior
+  reports. Confirmed exactly two already-completed, already-reported
+  steps account for the full gap, with zero unreported work: 373 -> 397
+  is step 11 (Phase 1 Family Test Readiness + minimum Student Today
+  experience, +24 tests, matching that step's own report exactly), 397 ->
+  422 is step 11.1 (connecting Plan-a-Day to the same canonical
+  `publishedDays` projection, +25 tests, also matching that step's own
+  report exactly). 422 -> 450 is step 11.2 (Account Governance Addendum,
+  +28 tests, already reported as such). 24 + 25 + 28 = 77, and 373 + 77 =
+  450 — the full 373 -> 450 span is accounted for by three already-
+  completed, already-reported steps with no hidden or unreported step
+  anywhere in between.
+
+  **Firestore rules change, emulator-verified.** Step 11.2's report
+  disclosed the `users/{userId}` systemRole-immutability rule as
+  reviewed but NOT emulator-verified ("no Firebase emulator in this
+  sandbox"). That limitation no longer holds: this sandbox has a working
+  Java runtime, and `firebase emulators:start --only firestore` starts
+  cleanly with no authentication required (unlike `firebase deploy`,
+  which still fails here for lack of real credentials — these are
+  different capabilities). A new emulator-backed test,
+  `functions/rules-tests/usersSystemRole.rules.test.mjs` (deliberately
+  outside `functions/src`, so `tsconfig.json`'s `rootDir`/`include`
+  never compiles it into the normal `test:unit` pipeline; run manually
+  against a live local emulator, new `npm run test:rules` script), loads
+  the REAL `firestore.rules` file into `@firebase/rules-unit-testing`'s
+  real CEL rules engine and runs 7 assertions: 3 prove the rule change
+  does not break legitimate existing behavior (a plain teacher can still
+  edit an ordinary field on a family member's profile; a plain teacher
+  can still create a brand-new family member's profile with no
+  `systemRole` field at all; the owner can still edit ordinary fields on
+  their own profile), and 4 prove the actual protection holds (a plain
+  teacher cannot grant themself owner via a direct update; a plain
+  teacher cannot grant a student owner; the owner cannot change their
+  OWN systemRole via a direct client write, only via the seed script's
+  admin-SDK path; `systemRole: "owner"` can never be set on `create`).
+  All 7 passed against the real rule text — this is a materially
+  stronger check than the source-code review alone, and directly answers
+  this step's specific ask ("verify the systemRole immutability change
+  did not accidentally prevent legitimate existing profile operations").
+  No client operation was found to conflict with the rule, so nothing
+  needed to move server-side.
+
+  **Owner bootstrap readiness (confirmed, re-stated explicitly).** Same
+  fact as step 11.2's "LIVE FIREBASE LIMITATION" paragraph, restated here
+  because this step asked for it as an explicit, standalone
+  confirmation: the real deployed project's `users/{corys-uid}` document
+  does not yet carry `systemRole: "owner"`. Before any real bootstrap/
+  seed run against the live project, Cory's entry in the real, gitignored
+  `scripts/accounts.config.json` must have `"systemRole": "owner"` added
+  to it explicitly; Sarah's and all three students' entries must NOT
+  gain that field. `seedAccounts.ts`'s conditional-spread discipline
+  means an old config that omits the field on an already-bootstrapped
+  account leaves that account's `systemRole` untouched — it is never
+  inferred from `presentationIdentityId`, displayName, or email, only
+  ever written by this one explicit, human-reviewed config edit.
+
+  **Live account smoke-test plan.** New
+  `curriculum/family_test_account_smoke_test_plan.md` — a checklist,
+  prepared but NOT executed (no live credentials in this sandbox),
+  for the eventual controlled deployment: per-account
+  authenticate/uid/profile/familyId/role/presentationIdentityId/correct-
+  experience checks for all five people, the exact per-person
+  role/systemRole/presentation-identity/kidKey/account-admin-access table
+  from this step's instructions, a non-destructive-first ordering (owner
+  administration is checked read-only and via a non-owner's calls being
+  rejected, before any real password/email change), and an explicit
+  carve-out that resetting a real credential to prove the feature works
+  requires Cory's own separate, explicit approval, run on his own account
+  first.
+
+  **Family Test Readiness re-audit under the new governance model.**
+  Re-checked rather than assumed: none of step 11/11.1's Student Today
+  work (`publishedDays`, `studentBlockProgress`, `updateBlockProgress`,
+  the eligibility mirror, the UI) reads or depends on `systemRole`
+  anywhere — confirmed both by source search (zero occurrences of
+  `systemRole`/`isSystemOwner`/`requireOwner` outside
+  `accountAdministration.ts`, `util/auth.ts`, `types.ts`, and their
+  tests) and by step 11.2's own regression-proof test asserting
+  `requireOwner` is used in exactly one file total. The accepted model —
+  Cory teacher+owner, Sarah teacher+standard, students standard,
+  educational teacher authority shared, account administration
+  owner-only — changes nothing about who can certify, generate, approve,
+  close out, or respond to a help request; Sarah's ordinary teacher
+  capabilities are unaffected by not holding `systemRole: "owner"`. No
+  code change was needed or made to preserve this; it already held by
+  construction from step 11.2, this step only confirmed it.
+
+  No new production code, no new tests beyond the emulator rules file
+  above (450 backend unit tests unchanged; the 7 emulator tests are a
+  separate, manually-run suite by design, not counted in that number). No
+  Firestore rules or index changes. Web unchanged this step. Not
+  deployed.
+
+Next up: step 12 (Carousel Factoids), once you've reviewed step 11.3 —
+explicitly NOT started per this step's own instruction.
 
 ---
 

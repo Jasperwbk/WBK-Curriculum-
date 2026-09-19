@@ -16,7 +16,8 @@
     "logs": "firebase functions:log",
     "lint": "eslint --ext .ts src",
     "test": "tsc --noEmit",
-    "test:unit": "npm run build && node --test $(find lib -name '*.test.js')"
+    "test:unit": "npm run build && node --test $(find lib -name '*.test.js')",
+    "test:rules": "node rules-tests/usersSystemRole.rules.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -24,6 +25,7 @@
     "firebase-functions": "^6.1.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
     "eslint": "^8.57.1",
