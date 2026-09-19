@@ -2,6 +2,31 @@ import { Timestamp } from "firebase-admin/firestore";
 
 export type Role = "teacher" | "student";
 
+/**
+ * System/account authority (build-order step 11.2 — Account Governance
+ * Addendum) — DELIBERATELY SEPARATE from `Role` and from
+ * `presentationIdentityId`. `Role` still gates every ordinary educational
+ * operation (requireTeacher) exactly as before; `systemRole` gates only
+ * genuinely system-sensitive account administration (requireOwner —
+ * util/auth.ts): resetting a family member's Firebase Auth password,
+ * changing a login email, viewing the family's account roster. Cory
+ * remains `role: "teacher"` (he keeps every ordinary teacher/curriculum
+ * capability Sarah has) PLUS `systemRole: "owner"`; Sarah stays
+ * `role: "teacher"`, `systemRole` absent/"standard" — full educational
+ * authority, no account-administration authority.
+ *
+ * `"owner"` is granted ONLY by the account seed/bootstrap script (admin
+ * SDK, bypasses Firestore rules) via an explicit `systemRole` field in
+ * that script's own (gitignored, real-credentials) config — never
+ * inferred from displayName, email, or presentationIdentityId, and never
+ * settable through any callable or client write (firestore.rules makes
+ * this field immutable to every client-side write, including the
+ * owner's own). Absent/`"standard"` is the safe default for every
+ * existing and every newly-created account until explicitly bootstrapped
+ * otherwise.
+ */
+export type SystemRole = "owner" | "standard";
+
 export type Location = "home" | "field" | "external";
 // home    = on-property, counts toward the 400-hour home-core requirement
 // field   = on-property but off-homestead-structure (e.g. a supervised
@@ -136,6 +161,17 @@ export interface UserProfile {
    * util/auth.ts, unchanged by this step.
    */
   presentationIdentityId: PresentationIdentityId | null;
+  /**
+   * System/account authority (build-order step 11.2) — see the SystemRole
+   * doc comment above for the full design rationale. Absent means
+   * "standard" (no account-administration authority) — the safe default
+   * for every account until the seed/bootstrap script explicitly grants
+   * "owner". Optional (not `SystemRole | null`) so every account created
+   * before this field existed needs no migration at all: `undefined` and
+   * `"standard"` mean exactly the same thing to every reader of this
+   * field (see util/auth.ts#isSystemOwner).
+   */
+  systemRole?: SystemRole;
 }
 
 // --- Stable presentation identities (build-order step 9) ---
@@ -414,7 +450,8 @@ export type AuditEventKind =
   | ProposalKind
   | "presentationIdentityAssignment"
   | "helpRequest"
-  | "curriculumQualityIssue";
+  | "curriculumQualityIssue"
+  | "accountAdministration";
 export type AuditEventAction =
   | AuditAction
   | "assigned"
@@ -424,7 +461,9 @@ export type AuditEventAction =
   | "resolved"
   | "severityChanged"
   | "quarantined"
-  | "quarantineReleased";
+  | "quarantineReleased"
+  | "passwordReset"
+  | "emailChanged";
 
 export interface AuditEvent {
   kind: AuditEventKind;

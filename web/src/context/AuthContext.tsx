@@ -17,6 +17,18 @@ export interface UserProfile {
   assessmentBaseline: Record<string, string>;
   /** Stable presentation-identity id (build-order step 9) — "jasper" | "celeste" | "kira" | "ro" | "nova" | null. See lib/presentationIdentity.ts. */
   presentationIdentityId: string | null;
+  /**
+   * System/account authority (build-order step 11.2) — "owner" | "standard"
+   * | undefined (absent means "standard"). PRESENTATION/ROUTING ONLY on
+   * this side, exactly like every other profile field: it decides whether
+   * the Account Administration nav item and page are shown, nothing more.
+   * The real security boundary is server-side (functions/src/util/
+   * auth.ts#requireOwner) — every account-administration callable
+   * re-verifies this from the caller's own stored profile regardless of
+   * what this client-side value says, so hiding the UI is a convenience,
+   * never the actual protection.
+   */
+  systemRole?: "owner" | "standard";
 }
 
 interface AuthContextValue {

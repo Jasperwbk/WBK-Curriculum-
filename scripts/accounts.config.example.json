@@ -16,7 +16,8 @@
       "role": "teacher",
       "characterMapping": null,
       "gradeLabel": null,
-      "presentationIdentityId": "jasper"
+      "presentationIdentityId": "jasper",
+      "systemRole": "owner"
     },
     {
       "email": "teacher2@example.com",

@@ -46,3 +46,38 @@ export function requireSameFamily(caller: CallerContext, familyId: string): void
     throw new HttpsError("permission-denied", "That record belongs to a different family.");
   }
 }
+
+/**
+ * Pure predicate factored out for direct unit-testability (build-order
+ * step 11.2, Account Governance Addendum). Named distinctly from
+ * firestore.rules' `isOwner(userId)` (which means "the caller IS this
+ * uid" — a completely different concept) to avoid confusing the two.
+ * Reads ONLY `profile.systemRole` — never displayName, email, or
+ * presentationIdentityId. `undefined`/`"standard"` both mean "no owner
+ * authority," the safe default for every account until the seed/
+ * bootstrap script explicitly sets `"owner"`.
+ */
+export function isSystemOwner(profile: UserProfile): boolean {
+  return profile.systemRole === "owner";
+}
+
+/**
+ * The gate for genuinely system-sensitive account administration only
+ * (resetting a family member's Firebase Auth password, changing a login
+ * email, viewing the family account roster) — NOT a replacement for
+ * requireTeacher. Every ordinary educational operation (certification,
+ * proposed-day approval, evidence/hours/mastery, help requests, curriculum
+ * quality) stays exactly requireTeacher-gated; Sarah (role: "teacher",
+ * systemRole absent) must keep passing every one of those unchanged.
+ *
+ * Requires role === "teacher" IN ADDITION TO systemRole === "owner" —
+ * defense-in-depth matching the addendum's own model ("Owner ... Teacher"
+ * is one person, never a student): a bootstrap config mistake that ever
+ * set systemRole "owner" on a student account must still not grant
+ * account-administration authority. Caught by this file's own tests.
+ */
+export function requireOwner(caller: CallerContext): void {
+  if (caller.profile.role !== "teacher" || !isSystemOwner(caller.profile)) {
+    throw new HttpsError("permission-denied", "Only the family's system owner may perform this action.");
+  }
+}

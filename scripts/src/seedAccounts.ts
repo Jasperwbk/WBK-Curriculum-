@@ -35,6 +35,25 @@ type Role = "teacher" | "student";
  */
 type PresentationIdentityId = "jasper" | "celeste" | "kira" | "ro" | "nova";
 
+/**
+ * System/account authority (build-order step 11.2 — Account Governance
+ * Addendum). Deliberately separate from `role`: `role` still governs
+ * ordinary educational operations (see functions/src/util/auth.ts's
+ * requireTeacher); `systemRole` governs only account administration
+ * (requireOwner) — resetting a family member's password, changing a
+ * login email, viewing the family's account roster. This is the ONLY
+ * place "owner" is ever granted — never inferred from displayName,
+ * email, or presentationIdentityId, and never settable through any
+ * callable or client Firestore write (firestore.rules makes this field
+ * immutable outside this script's admin-SDK write). Optional and
+ * explicit only, exactly like presentationIdentityId below: omitting it
+ * (every pre-step-11.2 config, and every config that doesn't explicitly
+ * name it) leaves an already-bootstrapped account's systemRole
+ * untouched on re-run — see the conditional spread below. Never write
+ * "owner" here for more than one account per family.
+ */
+type SystemRole = "owner" | "standard";
+
 interface AccountConfig {
   email: string;
   password: string;
@@ -43,6 +62,7 @@ interface AccountConfig {
   characterMapping: string | null;
   gradeLabel: string | null;
   presentationIdentityId?: PresentationIdentityId;
+  systemRole?: SystemRole;
 }
 
 interface SeedConfig {
@@ -127,6 +147,11 @@ async function main() {
           // account's presentationIdentityId exactly as it was, since this
           // is a merge:true write and an absent key here is never sent.
           ...(account.presentationIdentityId ? { presentationIdentityId: account.presentationIdentityId } : {}),
+          // Same discipline as presentationIdentityId above (build-order
+          // step 11.2) — an old config with no systemRole field, or a
+          // config that simply doesn't mention this account's, can never
+          // demote an already-bootstrapped owner back to "standard".
+          ...(account.systemRole ? { systemRole: account.systemRole } : {}),
         },
         { merge: true }
       );

@@ -14,6 +14,7 @@ import { StudentPlacementPage } from "./pages/StudentPlacementPage";
 import { HelpRequestsPage } from "./pages/HelpRequestsPage";
 import { IdentitySetupPage } from "./pages/IdentitySetupPage";
 import { CurriculumQualityPage } from "./pages/CurriculumQualityPage";
+import { AccountAdministrationPage } from "./pages/AccountAdministrationPage";
 
 function Gate() {
   const { user, profile, loading } = useAuth();
@@ -57,6 +58,9 @@ function Gate() {
       <Route path="/help-requests" element={<HelpRequestsPage />} />
       <Route path="/identity" element={<IdentitySetupPage />} />
       <Route path="/quality" element={<CurriculumQualityPage />} />
+      {profile?.systemRole === "owner" && (
+        <Route path="/account-admin" element={<AccountAdministrationPage />} />
+      )}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

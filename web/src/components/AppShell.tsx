@@ -19,6 +19,13 @@ const NAV_ITEMS = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
+  // Owner-only nav item (build-order step 11.2) — hiding this is a
+  // convenience only; the /account-admin route itself and every callable
+  // it calls independently re-verify owner authority server-side.
+  const navItems =
+    profile?.systemRole === "owner"
+      ? [...NAV_ITEMS, { to: "/account-admin", label: "Account Administration", end: false }]
+      : NAV_ITEMS;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--page)" }}>
@@ -48,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Horizontally scrollable on narrow screens instead of clipping/
             overflowing — every tab stays reachable at phone width. */}
         <nav className="flex items-center gap-1 overflow-x-auto -mx-1 px-1 pb-1">
-          {NAV_ITEMS.map(({ to, label, end }) => (
+          {navItems.map(({ to, label, end }) => (
             <NavLink
               key={to}
               to={to}

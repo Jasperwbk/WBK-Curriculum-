@@ -44,3 +44,8 @@ export {
   updateQualityIssueSeverity,
 } from "./curriculumQualityIssues";
 export { updateBlockProgress } from "./studentProgress";
+export {
+  getFamilyAccountAdministration,
+  resetFamilyMemberPassword,
+  changeFamilyMemberEmail,
+} from "./accountAdministration";

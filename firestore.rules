@@ -42,10 +42,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // `systemRole` (build-order step 11.2 — Account Governance Addendum) is
+    // deliberately immutable from EVERY client write, including a teacher
+    // editing their own or another family member's doc, and including the
+    // owner themself — the invariant this whole addendum rests on is that
+    // owner authority derives only from the seed/bootstrap script's admin-
+    // SDK write (bypasses these rules entirely), never from anything a
+    // signed-in user can send. Before this fix, `allow update: if
+    // isTeacherInFamily(...)` had NO per-field restriction at all, so any
+    // teacher could in principle have set `systemRole: "owner"` on their
+    // own doc via a raw Firestore write the moment this field existed —
+    // caught and closed in this same step, not left for later.
     match /users/{userId} {
       allow read: if isOwner(userId) || isTeacherInFamily(resource.data.familyId);
-      allow create: if isTeacherInFamily(request.resource.data.familyId);
-      allow update, delete: if isTeacherInFamily(resource.data.familyId);
+      allow create: if isTeacherInFamily(request.resource.data.familyId)
+        && request.resource.data.get('systemRole', null) != "owner";
+      allow update: if isTeacherInFamily(resource.data.familyId)
+        && request.resource.data.get('systemRole', null) == resource.data.get('systemRole', null);
+      allow delete: if isTeacherInFamily(resource.data.familyId);
     }
 
     match /logs/{logId} {

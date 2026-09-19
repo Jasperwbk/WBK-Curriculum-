@@ -1207,7 +1207,132 @@ deployed**:
   pipeline) untouched — confirmed zero regression risk by diff, not just
   by intent. Not deployed.
 
-Next up: step 12 (Carousel Factoids), once you've reviewed step 11.1.
+- **Step 11.2 — done, awaiting your review.** Account Governance Addendum
+  — Cory's locked role model (Owner/Principal/System Administrator/
+  Teacher) implemented as a real, separate authorization axis.
+
+  New `SystemRole` ("owner" | "standard") on `UserProfile`, DELIBERATELY
+  separate from `Role` ("teacher" | "student") — Cory stays `role:
+  "teacher"` (keeps every ordinary educational capability Sarah has)
+  PLUS `systemRole: "owner"`; Sarah stays `role: "teacher"`, `systemRole`
+  absent. Explicitly NOT implemented: `presentationIdentityId ===
+  "jasper"` as an authorization check — `isSystemOwner`/`requireOwner`
+  (util/auth.ts) read ONLY `profile.systemRole`, proven by tests that a
+  "jasper" presentation identity, a "Cory Crider" displayName, or an
+  email address alone never grant owner authority. `requireOwner` also
+  requires `role === "teacher"` as defense-in-depth (a bootstrap mistake
+  that ever set `systemRole: "owner"` on a student account must still not
+  grant account-administration authority) — caught by the test suite
+  itself, which initially asserted this and failed until the guard was
+  added.
+
+  Bootstrap: `scripts/seedAccounts.ts`'s `AccountConfig` gained an
+  optional `systemRole` field, written with the exact same conditional-
+  spread discipline as `presentationIdentityId` (build-order step 9) —
+  omitting it, or re-running an old config that doesn't mention it,
+  leaves an already-bootstrapped owner's `systemRole` untouched.
+  `accounts.config.example.json` now shows the field declared explicitly
+  on the Cory/jasper example entry — no real credentials added.
+
+  Firestore rules audit (section 8's explicit ask) surfaced a real,
+  pre-existing gap: `users/{userId}`'s `allow update: if
+  isTeacherInFamily(...)` had NO per-field restriction at all — any
+  teacher (Sarah included) could in principle have set `systemRole:
+  "owner"` on their own doc via a raw client Firestore write the moment
+  this field existed, undermining the whole addendum's core invariant.
+  Confirmed no legitimate app code path ever writes to `users/{uid}`
+  directly (every mutation already goes through a callable) before
+  closing it: `systemRole` is now immutable from every client write,
+  including the owner's own — `allow create` rejects `systemRole:
+  "owner"` outright, `allow update` requires it be unchanged
+  (`request.resource.data.get('systemRole', null) ==
+  resource.data.get('systemRole', null)`). Owner authority now derives
+  ONLY from the seed script's admin-SDK write, structurally, not by
+  convention.
+
+  New `functions/src/accountAdministration.ts`, three owner-only
+  callables (`requireCaller` -> `requireOwner` -> `requireSameFamily`
+  against a SERVER-FETCHED target profile, never a client-supplied
+  familyId/role claim):
+  `getFamilyAccountAdministration` (the family roster — display name,
+  role, presentation identity, plus LIVE Firebase Auth metadata fetched
+  fresh on every call via `getUser`, never stored in Firestore: email,
+  emailVerified, disabled, creation/last-sign-in time — Admin Auth never
+  exposes a password hash to begin with, so there's nothing here to leak
+  by construction); `resetFamilyMemberPassword` (Admin Auth `updateUser`
+  with only `{password}`, never reads an existing password — Firebase
+  itself never returns one to anyone); `changeFamilyMemberEmail` (Admin
+  Auth `updateUser` with only `{email}` — touches Firebase Auth alone,
+  never `uid`/`familyId`/`studentId`/`presentationIdentityId`/`kidKey`/
+  any educational record, since WBK identity is the stable uid/profile,
+  never the login email). Firebase Auth errors (`auth/weak-password`,
+  `auth/email-already-exists`, `auth/invalid-email`, etc.) are mapped to
+  short clean messages (`mapAuthError`, exported and directly tested)
+  rather than relayed raw. Both mutating callables write a sanitized
+  `auditEvents` record (new `"accountAdministration"` kind,
+  `"passwordReset"`/`"emailChanged"` actions, widened onto the existing
+  union) naming the actor and target — never the password, never the old
+  or new email address, verified by tests reading the actual literal
+  audit-write object body, not just the design description.
+
+  Web: `AuthContext.tsx`'s `UserProfile` mirror gained `systemRole`
+  (presentation/routing only, exactly like every other profile field —
+  the real boundary is the server-side `requireOwner` re-check on every
+  callable, never this client value). New `AccountAdministrationPage.tsx`
+  (`/account-admin`, gated in `App.tsx` by `profile?.systemRole ===
+  "owner"`, only reachable via a nav item `AppShell.tsx` adds for the
+  owner) lists the family roster with inline Reset Password / Change
+  Email forms. Self-protection (section 7): changing your OWN password or
+  email requires an extra explicit `confirm()` step naming exactly what's
+  about to change, distinct from the routine confirmation shown for
+  another family member. Deliberately NOT built (explicit scope limits):
+  account deletion, owner transfer, a UI to change anyone's `systemRole`
+  at all — there is no code path anywhere that ever writes `systemRole`
+  outside the seed script, so a signed-in owner cannot even accidentally
+  demote themselves or promote anyone else through this app.
+
+  28 new backend unit tests (422 -> 450): `isSystemOwner`/`requireOwner`
+  (owner-teacher acceptance, plain-teacher/student rejection, and the
+  three explicit "never inferred from X" tests — presentation identity,
+  displayName, email), `mapAuthError`'s full branch coverage,
+  source-scan tests on all three new callables (owner-only, server-
+  fetched target + same-family check, literal audit-write bodies proven
+  never to contain the password/email variable, never a client-supplied
+  familyId/role/systemRole), and two explicit regression-proof tests:
+  every pre-existing educational-operation file (certification,
+  check-in, curriculum quality, day plans/plan-a-day, evidence packets,
+  extracurriculars, family settings, placement, proposed days, help
+  requests, presentation identity) still calls `requireTeacher` and
+  never `requireOwner`, and `requireOwner` is used in exactly one file
+  in the whole functions source. All 422 pre-existing tests preserved.
+  Web verified via `tsc -b`/`oxlint`/`vite build` (no web test runner in
+  this repo — same disclosed limitation as every prior step).
+
+  One Firestore rules change (`users/{userId}`'s create/update rules, as
+  described above) — NOT emulator-verified (no Firebase emulator in this
+  sandbox); the `.get(field, default)` syntax used is standard Firestore
+  Rules v2 syntax, reviewed carefully but not executed against a live
+  or emulated ruleset. No new indexes (`getFamilyAccountAdministration`
+  uses the same single-field `familyId` equality query as
+  `useFamilyStudents`, already auto-indexed). No changes to `auditEvents`
+  rules (already teacher-in-family read, `write: if false`, unaffected).
+
+  LIVE FIREBASE LIMITATION: the real deployed project's `users/{corys-
+  uid}` document does NOT yet have `systemRole: "owner"` — this step
+  built the mechanism, it did not touch live data (no Firebase
+  credentials in this sandbox, and none used). To actually grant Cory's
+  existing live account owner authority, someone with real project
+  access must either (a) add `"systemRole": "owner"` to Cory's entry in
+  the real (gitignored) `scripts/accounts.config.json` and re-run `npm
+  run seed` (idempotent — touches only accounts explicitly naming a
+  field, safe to re-run against the live project), or (b) directly edit
+  `users/{corys-uid}` in the Firebase Console / via `firebase
+  firestore:` tooling to set `systemRole: "owner"` once. Either way,
+  this is a ONE-TIME action against the specific already-known uid — not
+  something this codebase can perform for itself, and not performed
+  here. Not deployed.
+
+Next up: step 12 (Carousel Factoids), once you've reviewed step 11.1 and 11.2.
 
 ---
 
