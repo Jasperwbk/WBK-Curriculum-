@@ -43,3 +43,4 @@ export {
   resolveQualityIssue,
   updateQualityIssueSeverity,
 } from "./curriculumQualityIssues";
+export { updateBlockProgress } from "./studentProgress";

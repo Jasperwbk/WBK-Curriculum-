@@ -23,6 +23,7 @@ import {
   loadMostRecentApprovedEvidencePacketBefore,
 } from "./curriculum/evidencePacketStore";
 import { HISTORICAL_FIGURE_CATALOG, getUpcomingContextTags } from "./curriculum/historicalFigureCatalog";
+import { buildPublishedDayProjection, publishedDayDocId } from "./curriculum/publishedDay";
 import {
   ART_COMPLEXITY_BAND_BY_KID,
   buildRecallQuestion,
@@ -989,12 +990,24 @@ export const approveProposedDay = onCall<ApproveProposedDayRequest>(async (reque
             `review it before approving.`
         );
       }
+      const approvedAt = Timestamp.now();
       tx.update(ref, {
         status: "approved",
         approvedByUid: caller.uid,
-        approvedAt: Timestamp.now(),
+        approvedAt,
         itineraryMode: freshDoc.draft.itineraryMode,
       });
+
+      // Student-safe published projection (build-order step 11, section
+      // 2) — written in the SAME transaction as approval itself, from the
+      // exact freshDoc/approvedAt that just became authoritative, so the
+      // two can never disagree or exist in only one of the two
+      // collections. See curriculum/publishedDay.ts's doc comment for
+      // exactly which fields this does and does not copy.
+      const publishedRef = db
+        .collection("publishedDays")
+        .doc(publishedDayDocId(freshDoc.familyId, freshDoc.studentId, freshDoc.date));
+      tx.set(publishedRef, buildPublishedDayProjection(freshDoc, proposedDayId, approvedAt));
     },
   });
 

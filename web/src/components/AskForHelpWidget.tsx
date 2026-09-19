@@ -23,12 +23,23 @@ const CATEGORY_BUTTONS: { category: HelpRequestCategory; emoji: string; label: s
  * 9, section 13) — a category button IS the whole submission for every
  * category except "Something else," so no typing is ever required (this
  * is what makes the flow usable for Maizely, and works identically for
- * every student). `reference` is accepted but optional and unused by any
- * caller today — passing the current proposedDayId/blockId/objectiveId
- * here is exactly how a future LearningBlock "Ask for Help" action plugs
- * in without redesigning this component.
+ * every student). `reference` is how a LearningBlock-level "Ask for Help"
+ * action (build-order step 11, section 8) passes the current
+ * proposedDayId/blockId/objectiveId into this SAME help-request path,
+ * rather than a second one.
+ *
+ * `compact` (step 11) renders this collapsed to a single small link for
+ * use inside a LearningBlock card on the Student Today page, expanding to
+ * the identical category picker on click — no new UI pattern, just a
+ * smaller footprint for use once per block instead of once per page.
  */
-export function AskForHelpWidget({ reference }: { reference?: HelpRequestReference }) {
+export function AskForHelpWidget({
+  reference,
+  compact = false,
+}: {
+  reference?: HelpRequestReference;
+  compact?: boolean;
+}) {
   const { user } = useAuth();
   const { requests } = useMyHelpRequests(user?.uid);
   const [otherText, setOtherText] = useState("");
@@ -36,6 +47,7 @@ export function AskForHelpWidget({ reference }: { reference?: HelpRequestReferen
   const [sending, setSending] = useState(false);
   const [sentMessage, setSentMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(!compact);
 
   const openCount = requests.filter((r) => r.status === "open").length;
 
@@ -55,19 +67,40 @@ export function AskForHelpWidget({ reference }: { reference?: HelpRequestReferen
     }
   }
 
+  if (compact && !expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="text-left text-xs font-medium underline"
+        style={{ color: "var(--series-1)" }}
+      >
+        🙋 Ask for help with this
+      </button>
+    );
+  }
+
   return (
     <div
-      className="rounded-xl border p-5 space-y-3 shadow-sm"
-      style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
+      className={compact ? "rounded-lg border p-3 space-y-2" : "rounded-xl border p-5 space-y-3 shadow-sm"}
+      style={{ background: compact ? "var(--surface-2)" : "var(--surface-1)", borderColor: "var(--border)" }}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
           🙋 Ask for help
         </h2>
-        {openCount > 0 && (
+        {!compact && openCount > 0 && (
           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
             {openCount} waiting for your teacher
           </span>
+        )}
+        {compact && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="text-xs"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Cancel
+          </button>
         )}
       </div>
 

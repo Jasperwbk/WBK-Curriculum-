@@ -1506,3 +1506,115 @@ export interface CurriculumQualityIssue {
   resolutionNote?: string;
   quarantine: CurriculumQuarantine | null;
 }
+
+// --- Student-safe published day (build-order step 11 — Phase 1 family
+// test readiness) ---
+//
+// `proposedDays` stays exactly as teacher-only as it always has been — a
+// student is never granted read access to it (section 2's audit
+// requirement: never unapproved proposals, superseded drafts, teacher-
+// only draft content, an edited-before-approval original, a sibling's
+// day, or teacher notes/governance metadata). Instead, `approveProposedDay`
+// (proposedDays.ts) writes ONE narrow, explicitly-chosen projection into
+// this SEPARATE collection, in the SAME transaction as approval itself —
+// see curriculum/publishedDay.ts#buildPublishedDayProjection for exactly
+// which fields are copied and why each one is safe. A student's Firestore
+// rule then only ever needs `isOwner(resource.data.studentId)` against
+// THIS narrow collection, never against `proposedDays` itself.
+//
+// Deterministic id (`${familyId}_${studentId}_${date}`, same formula as
+// evidencePacketStore.ts#evidencePacketDocId) — one per school day,
+// written once at approval and never mutated afterward (an approved
+// ProposedDay is never regenerated — see proposedDays.ts's doc comment —
+// so there is nothing for this projection to be re-derived from later).
+
+/** The one piece of live state a PublishedLearningBlock carries that isn't frozen at approval — see studentProgress.ts. Deliberately excludes "excused," a teacher-only concept a student can never set (section 5). */
+export type StudentBlockProgressState = "not_started" | "in_progress" | "completed";
+
+export interface PublishedLearningBlock {
+  blockId: string;
+  subject: Subject;
+  title: string;
+  stage: InstructionalStage;
+  estimatedMinutes: number;
+  required: boolean;
+  order: number;
+  dependsOn: BlockDependency[];
+  teacherLocked: boolean;
+  activityFormat?: ActivityFormat;
+  /** Free-text directions/description, when the plan included any — never fabricated when absent. */
+  notes?: string;
+  /** True when this block's work carried forward from an earlier day — shown to the student as a plain indicator, never the internal fromProposedDayId reference (see CarryForwardProvenance). */
+  carriedForward: boolean;
+  carryForwardReason?: string;
+}
+
+/**
+ * Age-appropriate, student-facing Historical Figure Closing content —
+ * denormalized from HistoricalFigureCatalog at publish time (the catalog
+ * itself is static, hand-authored, public-domain content, exactly like
+ * ART_COMPLEXITY_BAND_BY_KID already being copied onto
+ * HistoricalFigureClosingPlan at selection time — see that type's doc
+ * comment) so the student client never needs backend catalog access.
+ * `artworkAvailable` is always the honest, current
+ * isArtworkApprovedForPrinting result (build-order step 8/11) — never
+ * assumed true; every entry today has none, and the UI must say so rather
+ * than pretend or fabricate an image (section 7).
+ */
+export interface PublishedHistoricalFigureClosing {
+  figureId: string;
+  name: string;
+  era: string;
+  briefBio: string;
+  whyItMatters: string;
+  artComplexityBand: string;
+  showAndTellPrompt: string;
+  recallQuestion: string;
+  artworkAvailable: boolean;
+}
+
+export interface PublishedDay {
+  familyId: string;
+  studentId: string;
+  date: string; // ISO "YYYY-MM-DD"
+  proposedDayId: string;
+  proposalVersion: number;
+  itineraryMode: ItineraryMode;
+  title: string;
+  summary: string;
+  planText: string;
+  /** Resolved (edited ?? generated) — the student only ever sees the one final message, never both originals. */
+  jasperMessage: string | null;
+  learningBlocks: PublishedLearningBlock[];
+  historicalFigureClosing: PublishedHistoricalFigureClosing | null;
+  publishedAt: Timestamp;
+}
+
+// --- Student progress (build-order step 11) ---
+//
+// The smallest safe mechanism for a student's OWN activity to reach the
+// teacher's closeout as a starting point (section 5/6) without a second,
+// disconnected completion system: `updateBlockProgress` (studentProgress.ts)
+// writes here, AND — when an EndOfDayEvidencePacket already exists and is
+// still "open" for that day — mirrors the same state into that packet's
+// `draft.blocks[blockId].completionState` at the same time, touching
+// NOTHING else on the packet (never reportedMinutes, objectiveEvidence,
+// assessmentEligible, or any teacher note/observation). When no packet
+// exists yet, `openEvidencePacket` (evidencePackets.ts) seeds each block's
+// initial completionState from this record instead of hardcoding
+// "not_started" — either ordering ends at the same place: the teacher's
+// closeout starts from what the student actually did.
+export interface StudentBlockProgressEntry {
+  state: StudentBlockProgressState;
+  updatedAt: Timestamp;
+}
+
+export interface StudentDayProgress {
+  familyId: string;
+  studentId: string;
+  date: string;
+  /** Which approved day this progress belongs to — a defensive cross-check, not a security boundary (see studentProgress.ts#assertProgressMatchesPublishedDay). */
+  proposedDayId: string;
+  blocks: Record<string, StudentBlockProgressEntry>;
+  updatedAt: Timestamp;
+}

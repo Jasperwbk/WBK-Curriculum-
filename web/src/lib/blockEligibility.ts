@@ -1,28 +1,31 @@
-import type { ItineraryMode, LearningBlock } from "../types";
-
 /**
- * Pure "which blocks may this student start right now?" decision
- * (build-order step 5, requirement 5) — no I/O, so the UI's eventual
- * question is answerable without a database (see blockEligibility.test.ts).
- * Deliberately NOT a scheduling/workflow engine: it takes one day's
- * already-generated block list and today's itinerary mode, and returns a
- * flat eligibility verdict per block. Nothing here writes anything or
- * decides what to generate next.
+ * Client-side mirror of functions/src/curriculum/blockEligibility.ts's
+ * computeEligibleBlocks (build-order step 11, section 4) — same pure
+ * "which blocks may this student start right now?" decision, ported
+ * verbatim rather than re-derived, per the explicit instruction to reuse
+ * the one eligibility engine rather than invent a second.
  *
- * Flexible mode still enforces every rule below except strict ordering —
- * "flexible" means the student may choose AMONG the eligible set, never
- * that required work, prerequisites, or teacher locks can be bypassed.
+ * functions/ and web/ are separate TS projects with no shared build, so
+ * this is a manually-mirrored duplicate (same pattern as
+ * lib/presentationIdentity.ts mirroring functions/src/identity/
+ * presentationIdentity.ts). Unlike that mirror — a static data table that
+ * a hardcoded-literal-equality test can lock in place — this is an
+ * ALGORITHM, so there is no equivalent runtime parity proof available:
+ * this repo has no web-side test runner (see lib/presentationIdentity.ts's
+ * own comment and the step 9.1 report). The best available mitigation is
+ * keeping this file byte-for-byte identical in logic to the functions-side
+ * source, reviewed side by side, rather than a test asserting equality.
  *
- * Mirrored verbatim into web/src/lib/blockEligibility.ts (build-order step
- * 11, section 4) so the Student Today page can compute the same
- * eligibility client-side against the published-day projection merged
- * with live student progress, without a second, divergent engine. Unlike
- * the presentationIdentity.ts registry mirror (a static data table locked
- * by a cross-package literal-equality test), this is an algorithm and
- * this repo has no web-side test runner, so there is no runtime parity
- * proof — keep the two copies logically identical by inspection whenever
- * either changes.
+ * Takes a PublishedLearningBlock (the student-safe projection — see
+ * functions/src/curriculum/publishedDay.ts) merged with this student's own
+ * live StudentBlockProgressState (see lib/studentProgress.ts's merge
+ * helper) rather than the functions-side LearningBlock directly, since the
+ * student client only ever has the published projection plus their own
+ * progress record, never the teacher-only draft.
  */
+
+export type ItineraryMode = "strict" | "flexible";
+export type StudentBlockProgressState = "not_started" | "in_progress" | "completed";
 
 export type EligibilityReason =
   | "eligible"
@@ -38,15 +41,25 @@ export interface BlockEligibility {
   reason: EligibilityReason;
 }
 
+/** The minimal shape computeEligibleBlocks actually reads — a PublishedLearningBlock with its live completionState merged in. */
+export interface EligibilityInputBlock {
+  blockId: string;
+  required: boolean;
+  order: number;
+  dependsOn: readonly { blockId: string }[];
+  teacherLocked: boolean;
+  completionState: StudentBlockProgressState;
+}
+
 export function computeEligibleBlocks(
-  blocks: readonly LearningBlock[],
+  blocks: readonly EligibilityInputBlock[],
   itineraryMode: ItineraryMode
 ): BlockEligibility[] {
   const completed = new Set(blocks.filter((b) => b.completionState === "completed").map((b) => b.blockId));
   const requiredBlocks = blocks.filter((b) => b.required);
-  // Early completion (requirement 7) unlocks enrichment for THIS day only —
-  // there is no code path here that reaches into another day's blocks, so
-  // it structurally cannot unlock tomorrow's required work.
+  // Early completion unlocks enrichment for THIS day only — there is no
+  // code path here that reaches into another day's blocks, so it
+  // structurally cannot unlock tomorrow's required work.
   const allRequiredComplete = requiredBlocks.length === 0 || requiredBlocks.every((b) => completed.has(b.blockId));
   const requiredInOrder = [...requiredBlocks].sort((a, b) => a.order - b.order);
 

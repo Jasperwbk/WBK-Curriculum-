@@ -935,7 +935,151 @@ deployed**:
   as every callable in this codebase (no Firebase emulator in this
   sandbox). Not deployed.
 
-Next up: step 11, once you've reviewed step 10.
+- **Step 11 — done, awaiting your review.** Phase 1 family test readiness
+  audit + minimum Student Today experience. Explicitly NOT production
+  launch; deployment was not performed.
+
+  Audit first (workflow trace, not assumed): confirmed the teacher path
+  (certify → generate → review/edit → approve) and the closeout path
+  (open packet → edit → approve) already work end to end from steps 4-6.
+  The student path was confirmed to not exist at all — `StudentHomePage`
+  only ever showed placement-test status; there was no way for a signed-in
+  student to see their own approved day. The suspected blocker was
+  confirmed exactly as described: `proposedDays` is (correctly)
+  teacher-only in `firestore.rules`, with no owner-read clause, so a
+  student could never have read their own day even once approved.
+
+  Student-safe published-day projection: rather than widen `proposedDays`
+  access (real leakage risk — drafts, superseded versions, sibling days,
+  teacher-only governance fields all live in that one document), a new
+  `publishedDays/{familyId}_{studentId}_{date}` collection
+  (`curriculum/publishedDay.ts#buildPublishedDayProjection`) is written by
+  `approveProposedDay` itself, in the SAME transaction that sets
+  `status: "approved"`. Every field is explicitly constructed (never a
+  spread of the source document), so a future field added to `ProposedDay`
+  can't silently leak to students by default. `firestore.rules` gives
+  `publishedDays` an owner-or-teacher read, `write: if false` (Cloud
+  Function only). `proposedDays` itself is now documented as teacher-only
+  *forever*, not "until a student view exists."
+
+  Student progress: a new `studentBlockProgress/{familyId}_{studentId}_
+  {date}` collection (owner-or-teacher read, `write: if false`) is the
+  ONLY place a student's own not_started/in_progress/completed signal is
+  ever written, via one new callable, `updateBlockProgress`
+  (`studentProgress.ts`). It structurally cannot do any of the things
+  students must never do: `isStudentBlockProgressState`
+  (`curriculum/studentProgress.ts`) validates against exactly three
+  values, deliberately excluding the real fourth packet state, "excused"
+  — a student can never self-excuse, by type, not by convention. Identity/
+  ownership/date are derived server-side from the referenced
+  `proposedDays` document (admin SDK) — the client names a location
+  (`proposedDayId`/`blockId`), never asserts `familyId`/`date` directly.
+  Uses `requireOwnerOrTeacher` (a student may only ever act on themself)
+  rather than a teacher-only guard, matching every other self-or-teacher
+  callable in this codebase.
+
+  Evidence packet connection (no second completion system): a student's
+  write always lands in `studentBlockProgress`, and — only when a matching
+  `EndOfDayEvidencePacket` already exists and is still `"open"` — is ALSO
+  mirrored into that packet's `draft.blocks[blockId].completionState` in
+  the same call, bumping `draft.revision` so a teacher's concurrently-open
+  draft correctly detects the change via the existing optimistic-
+  concurrency check rather than silently losing it. For the opposite
+  ordering (teacher opens the packet after the school day already
+  happened), `openEvidencePacket` now seeds each block's initial
+  `completionState` from `studentBlockProgress` instead of hardcoding
+  `"not_started"`. Every other packet field (reportedMinutes,
+  objectiveEvidence, assessmentEligible, dayNotes) is provably untouched
+  by this path — the teacher remains the sole authority over hours,
+  evidence, and mastery at closeout.
+
+  Strict/Flexible: reused `curriculum/blockEligibility.ts#
+  computeEligibleBlocks` exactly as it already existed from step 5 — no
+  second eligibility engine was built. Because a `LearningBlock`'s plan-
+  time `completionState` never updates (confirmed by direct inspection: it
+  stays `"not_started"` forever on both `proposedDays` and the new
+  `publishedDays` projection), the Student Today page merges each block's
+  live `studentBlockProgress` state onto a copy of the published blocks
+  before calling eligibility — this could not be fed the raw published day
+  directly. `computeEligibleBlocks` was mirrored verbatim into
+  `web/src/lib/blockEligibility.ts` (same pattern as the step 9.1 identity
+  registry mirror) since `functions/` and `web/` share no build; unlike
+  that mirror, this is an algorithm, not static data, so there is no
+  runtime parity proof available (no web test runner exists in this repo)
+  — both copies carry a doc comment cross-referencing each other and must
+  be kept identical by inspection when either changes.
+
+  Student Today UI: `usePublishedDay`/`useStudentProgress`
+  (`web/src/hooks/`) are realtime `onSnapshot` listeners on the two new
+  doc-id-keyed collections (read-only — the only writer is the
+  `updateBlockProgress` callable, never a direct client write). New
+  `StudentTodaySection` (`web/src/components/`), wired into
+  `StudentHomePage.tsx`, additively (existing placement-test content is
+  untouched): Pledge cue (static ritual text — confirmed via ROADMAP.md
+  §4b this is intentionally not per-day data), Jasper Morning Message,
+  day summary + itinerary-mode explanation, a PE/movement reminder when
+  today includes a `physical_education` block, each LearningBlock in
+  approved order with subject/stage/estimated time/required-vs-enrichment/
+  carry-forward indication/locked-reason text, Start/Mark done controls
+  (only rendered when eligible), and a Historical Figure Coloring closing
+  section. `AskForHelpWidget` gained a `compact` mode (collapsed to one
+  small link, expanding to the identical category picker) so the EXISTING
+  step 9 help-request path — not a new one — could be reused once per
+  block, now carrying `{proposedDayId, blockId}` via its pre-existing
+  `reference` prop.
+
+  Historical Figure closing: never fabricates artwork. `artworkAvailable`
+  is copied straight from the existing `isArtworkApprovedForPrinting` gate
+  (step 8) — always `false` today, since no image pipeline exists — and
+  the UI shows an honest "no printable page ready yet, that's okay" state
+  rather than any placeholder image, while still surfacing the real
+  show-and-tell/recall prompts so the discussion/retention activity works
+  without printable art. A day with no closing planned (non-instructional)
+  shows "No Historical Figure Coloring closing planned for today," never
+  fabricated content.
+
+  Curriculum readiness (content, not software): direct inspection of
+  `curriculum/q1_fall/*.md` confirmed real, substantive Week 1–9 content
+  for all three children (Millaray, Makaio, Maizely) in the exact table
+  format `parseStaticCurriculumMarkdown` expects — Q1 is NOT placeholder
+  for a family test. The separate `*_retrofit.md` files in the same
+  directory are reference documents only; confirmed by source search they
+  are never read by any runtime loader.
+
+  Account readiness (code path, not live state): `scripts/seedAccounts.ts`
+  / `accounts.config.example.json` correctly seed 2 teacher +
+  3 student accounts with `familyId`/`role`/`presentationIdentityId` set
+  for the 5 real people, idempotently, without ever inferring an identity
+  from a name. This step did not and could not verify which accounts have
+  actually been bootstrapped in the live deployed project — that requires
+  checking the real Firestore data, not this sandbox.
+
+  24 new unit tests (373 → 397): `publishedDay.test.ts` (doc-id format,
+  draft-vs-frozen-original field sourcing, jasperMessage edited/generated/
+  null resolution, an exact-key-set assertion on both the top-level
+  projection and each block proving no governance metadata can leak,
+  notes/activityFormat pass-through, carriedForward-as-plain-boolean,
+  honest `artworkAvailable: false`, missing-catalog-figure graceful
+  degradation), `curriculum/studentProgress.test.ts` (doc-id format,
+  `isStudentBlockProgressState` accepting exactly the 3 valid values and
+  rejecting `"excused"`/garbage, `toPacketCompletionState` passthrough),
+  and `studentProgress.test.ts` (source-scan tests proving the callable
+  uses `requireOwnerOrTeacher` not a teacher-only guard, never writes the
+  literal `"excused"`, never touches reportedMinutes/objectiveEvidence/
+  assessmentEligible/dayNotes, never calls createProposal/approveProposal,
+  validates blockId against the day's real blocks, derives ownership from
+  the server-fetched day rather than client-supplied fields, and only
+  mirrors into an already-open packet). No new Firestore composite
+  indexes — both new collections are read by deterministic doc-id lookup,
+  never a `.where()` query. Two new Firestore rules
+  (`publishedDays`/`studentBlockProgress`, both owner-or-teacher read,
+  Cloud-Function-only write). The callables' own Firestore behavior (the
+  actual transaction writes, rule enforcement) and the web-side
+  eligibility mirror are NOT integration-tested — same disclosed
+  limitation as every prior step (no Firebase emulator, no web test
+  runner in this repo). Not deployed.
+
+Next up: step 12 (Carousel Factoids), once you've reviewed step 11.
 
 ---
 

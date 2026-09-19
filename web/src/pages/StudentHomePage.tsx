@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { StudentShell } from "../components/StudentShell";
 import { AskForHelpWidget } from "../components/AskForHelpWidget";
 import { StudentSetupRequiredNotice } from "../components/StudentSetupRequiredNotice";
+import { StudentTodaySection } from "../components/StudentTodaySection";
 import { useStudentIdentity } from "../hooks/useStudentIdentity";
 
 type Status = "loading" | "not_started" | "pending_review" | "done" | "not_applicable";
@@ -107,6 +108,8 @@ export function StudentHomePage() {
             </p>
           </div>
         )}
+
+        {identityStatus === "ready" && <StudentTodaySection />}
 
         <div className="text-left">
           <AskForHelpWidget />

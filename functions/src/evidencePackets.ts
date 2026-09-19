@@ -5,6 +5,7 @@ import { createProposal, approveProposal } from "./approvals";
 import { getSubjectType } from "./subjects";
 import { getLatestProposedDay } from "./proposedDays";
 import { evidencePacketDocId, getEvidencePacket } from "./curriculum/evidencePacketStore";
+import { studentProgressDocId, toPacketCompletionState } from "./curriculum/studentProgress";
 import { isValidRetentionObservation, mergeBlockEdits } from "./curriculum/evidenceValidation";
 import { checkDraftRevision } from "./curriculum/proposedDayLifecycle";
 import { aggregateApprovedMinutesBySubject, hourLogDocId } from "./curriculum/evidenceHours";
@@ -15,7 +16,7 @@ import {
   initialProjectionState,
   needsProjection,
 } from "./curriculum/evidenceProjection";
-import type { EndOfDayEvidencePacket, EvidenceBlockEntry, LogEntry } from "./types";
+import type { EndOfDayEvidencePacket, EvidenceBlockEntry, LogEntry, StudentDayProgress } from "./types";
 
 /**
  * End-of-day evidence / completion / actual instructional hours
@@ -105,6 +106,22 @@ export const openEvidencePacket = onCall<OpenEvidencePacketRequest>(async (reque
     );
   }
   const plan = latest.record;
+  const db = getFirestore();
+
+  // Seeds each block's starting completionState from whatever the student
+  // already recorded themselves (build-order step 11, section 6: "teacher
+  // should open the day's evidence packet and see the student's recorded
+  // progress as the starting point") — covers the common ordering where
+  // the school day happens before the teacher opens the packet that
+  // evening. The other ordering (teacher opens the packet first) is
+  // handled on the student-progress side instead — see
+  // studentProgress.ts#updateBlockProgress, which mirrors into an
+  // already-open packet directly.
+  const progressSnap = await db
+    .collection("studentBlockProgress")
+    .doc(studentProgressDocId(familyId, studentId, date))
+    .get();
+  const studentProgress = progressSnap.exists ? (progressSnap.data() as StudentDayProgress) : null;
 
   const now = Timestamp.now();
   const blocks: EvidenceBlockEntry[] = plan.draft.learningBlocks.map((block) => ({
@@ -116,7 +133,9 @@ export const openEvidencePacket = onCall<OpenEvidencePacketRequest>(async (reque
     plannedMinutes: block.estimatedMinutes,
     reportedMinutes: null,
     approvedMinutes: null,
-    completionState: "not_started",
+    completionState: studentProgress?.blocks[block.blockId]
+      ? toPacketCompletionState(studentProgress.blocks[block.blockId].state)
+      : "not_started",
     assessmentEligible: plan.blockAssessmentExclusions?.[block.blockId]?.eligible ?? true,
     objectiveEvidence: [],
     sourceQuarterCertificationId: block.sourceQuarterCertificationId,
@@ -159,7 +178,6 @@ export const openEvidencePacket = onCall<OpenEvidencePacketRequest>(async (reque
       : null,
   };
 
-  const db = getFirestore();
   const id = evidencePacketDocId(familyId, studentId, date);
   const ref = db.collection("evidencePackets").doc(id);
   // Transactional create-if-absent — closes the race between the
