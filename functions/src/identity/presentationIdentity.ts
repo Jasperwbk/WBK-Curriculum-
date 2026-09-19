@@ -1,7 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { requireCaller, requireTeacher, requireSameFamily } from "../util/auth";
-import { inferKidKey } from "../curriculum/placementTestItems";
 import type {
   PlacementKidKey,
   PresentationIdentityId,
@@ -60,25 +59,54 @@ export function kidKeyForPresentationIdentity(id: PresentationIdentityId): Place
 }
 
 /**
- * The stable-identity-first replacement for placementTestItems.ts's
- * inferKidKey (build-order step 9, section 2/3: identity must not be
- * inferred from displayName). Prefers `profile.presentationIdentityId`
- * (an explicit, teacher-assigned, stable id) whenever it's set; falls back
- * to the legacy display-name inference ONLY for an account that hasn't
- * been bootstrapped yet (`presentationIdentityId` still null) — see
- * section 4's "existing accounts must continue working" requirement. This
- * fallback is a deliberate, temporary compatibility path, not a second
- * permanent identity mechanism: once assignPresentationIdentity has been
- * run for every student in a family, this function never reaches the
- * fallback branch for them again. Returns null for a teacher account or
- * an unrecognized display name, exactly like inferKidKey did.
+ * The ONLY way a student's PlacementKidKey is ever derived from a
+ * UserProfile (build-order step 9.2 — replaces step 9.1's version, which
+ * still fell back to display-name inference for a not-yet-bootstrapped
+ * account; that fallback is now removed entirely per the locked policy:
+ * an account missing a stable identity must be treated as requiring
+ * setup, never identified by what its displayName happens to contain).
+ *
+ * A pure lookup: reads `profile.presentationIdentityId` ONLY — never
+ * displayName, email, or any other name-shaped field. Returns null for a
+ * teacher account, an account with no presentationIdentityId at all, or
+ * any other unresolved case; every one of those is "setup required" and
+ * must be handled identically by callers (see requireKidKeyForStudent
+ * below for the throwing call-boundary guard most callers should use
+ * instead of this raw lookup).
  */
 export function resolveKidKeyForStudent(profile: UserProfile): PlacementKidKey | null {
-  if (profile.presentationIdentityId) {
-    const kidKey = kidKeyForPresentationIdentity(profile.presentationIdentityId);
-    if (kidKey) return kidKey;
+  // isPresentationIdentityId guards against stale/corrupted Firestore data
+  // (a value that was once valid but no longer matches the registry, or
+  // was never valid at all) — without it, an invalid id would reach
+  // kidKeyForPresentationIdentity's direct index lookup and throw, rather
+  // than being treated as "setup required" like every other unresolved
+  // case.
+  if (!isPresentationIdentityId(profile.presentationIdentityId)) return null;
+  return kidKeyForPresentationIdentity(profile.presentationIdentityId) ?? null;
+}
+
+/**
+ * The call-boundary guard (build-order step 9.2, section 2: "throw the
+ * appropriate controlled precondition error at call boundaries"). Use
+ * this instead of resolveKidKeyForStudent wherever a STUDENT account's
+ * kidKey is actually required to proceed (recording a placement test,
+ * grounding day-plan generation in that student's curriculum) — it throws
+ * a clear, actionable `failed-precondition` naming the account by its
+ * displayName (for the teacher reading the error, not for identity
+ * derivation) rather than silently proceeding or guessing. Never call
+ * this for a profile that might legitimately be a non-student (a
+ * teacher) — check `profile.role === "student"` first in that case, since
+ * a teacher having no kidKey is expected, not an error.
+ */
+export function requireKidKeyForStudent(profile: UserProfile): PlacementKidKey {
+  const kidKey = resolveKidKeyForStudent(profile);
+  if (!kidKey) {
+    throw new HttpsError(
+      "failed-precondition",
+      `${profile.displayName}'s account needs a presentation identity assigned (see the Identities page) before this can proceed.`
+    );
   }
-  return inferKidKey(profile.displayName);
+  return kidKey;
 }
 
 /**

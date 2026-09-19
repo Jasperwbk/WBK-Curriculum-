@@ -802,7 +802,57 @@ deployed**:
   fallback; every other hit is UI copy, registry label data, or historical
   doc/report text. No rules or index changes. Not deployed.
 
-Next up: step 10, once you've reviewed step 9.1.
+- **Step 9.2 — done, awaiting your review.** Removed the final backend
+  display-name identity fallback.
+
+  `resolveKidKeyForStudent` (`identity/presentationIdentity.ts`) no longer
+  falls back to `inferKidKey(displayName)` for a not-yet-bootstrapped
+  account — it's now a pure lookup of `presentationIdentityId` only,
+  returning `null` for a missing, invalid/stale, or teacher-role id, with
+  no exceptions. Its two real callers were both audited and updated:
+  `dayPlans.ts#buildStudentContext` now calls a new throwing guard,
+  `requireKidKeyForStudent`, whenever the target profile's `role` is
+  `"student"` (a teacher profile still resolves to `null` harmlessly, as
+  before — this was never inferred from their name either); a genuine
+  student with no bootstrapped identity now gets a clear
+  `failed-precondition` naming the account and pointing at the fix,
+  instead of a silently ungrounded plan. `placementTest.ts`'s
+  `assertKidKeyMatchesTarget` now calls the same guard unconditionally
+  (every caller targets a real student, never a teacher) — a target
+  lacking a bootstrapped identity is now refused outright rather than
+  silently letting the client-supplied `kidKey` through unchecked, which
+  was exactly the previously-permissive gap this cross-check exists to
+  close.
+
+  The backend `inferKidKey` function itself (`curriculum/
+  placementTestItems.ts`) was deleted — its one remaining caller was the
+  fallback just removed, and a full-repo audit (this step's own section
+  3) confirmed no other backend helper derives student identity from
+  displayName, email, or any other name-shaped field; every other
+  `Millaray`/`Makaio`/`Maizely`/`Kira`/`Ro`/`Nova` hit in `functions/src`
+  is a `PlacementKidKey` literal used as a stable `Record` key, or UI/
+  prompt copy text, never an identity decision.
+
+  A real bug surfaced by the new tests: `kidKeyForPresentationIdentity`
+  indexes `PRESENTATION_IDENTITIES` directly by its argument, which throws
+  a `TypeError` (rather than returning `undefined`) for a string that
+  isn't one of the 5 registered ids — `resolveKidKeyForStudent` now guards
+  with `isPresentationIdentityId` first, so a stale/corrupted
+  `presentationIdentityId` value in Firestore resolves to `null` ("setup
+  required") instead of crashing the caller.
+
+  6 new/rewritten unit tests (336 -> 342): the old "not-yet-bootstrapped
+  falls back to displayName" test (accurate for step 9, now obsolete) was
+  replaced with tests proving the opposite for every realistic
+  displayName, an invalid-id test (which caught the `TypeError` bug
+  above), a teacher-identity-on-a-student-profile defensive case, and
+  `requireKidKeyForStudent`'s throw/message-content/error-code tests, plus
+  two source-scan tests (mirroring step 9.1's web-side ones) proving zero
+  remaining `inferKidKey(...)` callers under `functions/src` and that the
+  function no longer exists there. No rules/index changes — this step
+  touched only resolution logic, not any collection shape. Not deployed.
+
+Next up: step 10, once you've reviewed step 9.2.
 
 ---
 

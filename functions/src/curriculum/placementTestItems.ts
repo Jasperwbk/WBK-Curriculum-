@@ -101,19 +101,14 @@ export const PLACEMENT_SCORING_NOTES: Record<string, string> = {
   "MZ-07": "Log level: no help / a little guidance / hands-on help — watching persistence, not speed.",
 };
 
-/**
- * This is a fixed, three-kid family — infers which item set / color-sheet
- * rotation slot a student maps to from their display name, so callers don't
- * have to separately store a kidKey anywhere. Returns null for a name that
- * doesn't match any of the three (e.g. a teacher account).
- */
-export function inferKidKey(displayName: string): PlacementKidKey | null {
-  const normalized = displayName.trim().toLowerCase();
-  if (normalized.startsWith("millaray")) return "millaray";
-  if (normalized.startsWith("makaio")) return "makaio";
-  if (normalized.startsWith("maizley") || normalized.startsWith("maizely")) return "maizley";
-  return null;
-}
+// The display-name-substring-inference helper that used to live here
+// (inferKidKey) was removed (build-order step 9.2) — the last backend
+// caller (identity/presentationIdentity.ts's resolveKidKeyForStudent) had
+// its own display-name fallback removed in the same step, per the locked
+// policy: an account missing a stable presentationIdentityId is treated
+// as requiring setup, never identified by what its displayName contains.
+// See identity/presentationIdentity.ts for the current, stable-id-only
+// resolution path.
 
 function item(
   id: string,

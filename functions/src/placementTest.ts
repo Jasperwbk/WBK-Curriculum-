@@ -3,7 +3,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { requireCaller, requireOwnerOrTeacher, requireTeacher } from "./util/auth";
 import { recordMasteryResult } from "./mastery";
 import { PLACEMENT_TEST_ITEMS } from "./curriculum/placementTestItems";
-import { resolveKidKeyForStudent } from "./identity/presentationIdentity";
+import { requireKidKeyForStudent } from "./identity/presentationIdentity";
 import type {
   PlacementItemResult,
   PlacementKidKey,
@@ -33,17 +33,19 @@ async function loadTarget(familyId: string, userId: string): Promise<UserProfile
  * authenticated records") — `kidKey` was previously accepted from the
  * client with no check that it actually matches the target account, which
  * could score a placement test against the wrong catalog/objective-id
- * namespace while writing results under the wrong userId. Only enforced
- * when the target's own kidKey can actually be resolved (a bootstrapped
- * presentationIdentityId, or the legacy display-name fallback) — an
- * unresolvable target (e.g. a display name that doesn't match any known
- * pattern and no presentationIdentityId yet) is left exactly as
- * permissive as before this check existed, so no currently-working
- * account is newly blocked by this addition.
+ * namespace while writing results under the wrong userId.
+ *
+ * Tightened in build-order step 9.2: a target with no bootstrapped
+ * presentation identity is no longer silently permitted through (that
+ * would have meant trusting the client-supplied kidKey unchecked for
+ * exactly the accounts most in need of the check) — requireKidKeyForStudent
+ * throws a clear, actionable error instead, naming the account and
+ * pointing at the fix (assign its identity), never falling back to a
+ * display-name guess.
  */
 function assertKidKeyMatchesTarget(target: UserProfile, kidKey: PlacementKidKey): void {
-  const resolved = resolveKidKeyForStudent(target);
-  if (resolved && resolved !== kidKey) {
+  const resolved = requireKidKeyForStudent(target);
+  if (resolved !== kidKey) {
     throw new HttpsError(
       "invalid-argument",
       `kidKey "${kidKey}" does not match this student's own identity ("${resolved}").`

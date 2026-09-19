@@ -19,7 +19,7 @@ import {
   findDesignationForKid,
   type DayDesignationLookup,
 } from "./curriculum/dayDesignation";
-import { resolveKidKeyForStudent } from "./identity/presentationIdentity";
+import { resolveKidKeyForStudent, requireKidKeyForStudent } from "./identity/presentationIdentity";
 import type {
   CurriculumGovernanceMode,
   DayDesignationType,
@@ -168,7 +168,11 @@ export async function buildStudentContext(
   let dayDesignationType: DayDesignationType | null = null;
   let dayDesignationDescription: string | null = null;
   let usedWeekContent: string | null = null;
-  const kidKey = resolveKidKeyForStudent(profile);
+  // A genuine student with no bootstrapped presentationIdentityId must
+  // fail loudly (build-order step 9.2) rather than silently generating an
+  // ungrounded plan — resolveKidKeyForStudent stays a plain lookup for a
+  // non-student profile (a teacher never has a kidKey, and that's fine).
+  const kidKey = profile.role === "student" ? requireKidKeyForStudent(profile) : resolveKidKeyForStudent(profile);
   if (kidKey && quarterAndWeek) {
     const weekContent = await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week);
     const designation = findDesignationForKid(dayDesignations, kidKey);

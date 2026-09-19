@@ -11,6 +11,7 @@ import {
   findCollidingAssignment,
   isPresentationIdentityId,
   kidKeyForPresentationIdentity,
+  requireKidKeyForStudent,
   resolveKidKeyForStudent,
 } from "./presentationIdentity";
 import type { UserProfile } from "../types";
@@ -156,10 +157,11 @@ test("PresentationIdentityInfo carries no capability/permission fields — role 
   }
 });
 
-// --- resolveKidKeyForStudent (build-order step 9.1): stable identity is
-// authoritative; the legacy displayName fallback fires ONLY when
-// presentationIdentityId is genuinely unset, and can never be overridden
-// by a misleading displayName once a stable identity IS set. ---
+// --- resolveKidKeyForStudent / requireKidKeyForStudent (build-order step
+// 9.2): the legacy displayName fallback reported in the step 9.1 report is
+// now removed entirely. presentationIdentityId is the ONLY signal; a
+// not-yet-bootstrapped account is ALWAYS "setup required," never
+// identified by what its displayName happens to contain. ---
 
 test("a bootstrapped presentationIdentityId is authoritative — a misleading displayName cannot alter the resolved kidKey", () => {
   const profile = studentProfile({ displayName: "Makaio Crider", presentationIdentityId: "kira" });
@@ -168,23 +170,63 @@ test("a bootstrapped presentationIdentityId is authoritative — a misleading di
 
 test("resolveKidKeyForStudent never reads any email-shaped field — UserProfile carries no email at all, so a misleading email cannot alter the resolved identity by construction", () => {
   // UserProfile (types.ts) has no `email` field — identity resolution can
-  // only ever see familyId/displayName/role/presentationIdentityId, never
-  // an email address. This test documents that structural guarantee: a
-  // profile with an unrelated extra field is still resolved purely from
-  // presentationIdentityId, proving no other field (email included, were
-  // one ever added) is consulted.
+  // only ever see presentationIdentityId, never an email address. This
+  // test documents that structural guarantee: a profile with an unrelated
+  // extra field is still resolved purely from presentationIdentityId,
+  // proving no other field (email included, were one ever added) is
+  // consulted.
   const profile = { ...studentProfile({ presentationIdentityId: "nova" }), unrelatedField: "attacker@example.com" };
   assert.equal(resolveKidKeyForStudent(profile), "maizley");
 });
 
-test("a not-yet-bootstrapped account (presentationIdentityId: null) falls back to the legacy displayName inference — a deliberate, documented, temporary compatibility path (build-order step 9), not a second permanent mechanism", () => {
-  const profile = studentProfile({ displayName: "Millaray Crider", presentationIdentityId: null });
-  assert.equal(resolveKidKeyForStudent(profile), "millaray");
+test("a not-yet-bootstrapped account (presentationIdentityId: null) resolves to null — NEVER falls back to displayName inference, even when the displayName looks exactly like a real kid's name", () => {
+  for (const displayName of ["Millaray Crider", "Makaio Crider", "Maizely Crider", "Kira", "Nova"]) {
+    const profile = studentProfile({ displayName, presentationIdentityId: null });
+    assert.equal(resolveKidKeyForStudent(profile), null, `"${displayName}" must not resolve a kidKey on its own`);
+  }
 });
 
-test("a not-yet-bootstrapped account with an unrecognized displayName resolves to null — never a guess", () => {
-  const profile = studentProfile({ displayName: "New Kid", presentationIdentityId: null });
+test("an invalid/stale presentationIdentityId (not one of the 5 stable ids) resolves to null, not a guess from displayName", () => {
+  // Simulates corrupted/stale Firestore data, which bypasses the type
+  // system at the read boundary exactly like every `snap.data() as
+  // UserProfile` cast elsewhere in this codebase — hence the `as` here.
+  const profile = {
+    ...studentProfile({ displayName: "Millaray Crider" }),
+    presentationIdentityId: "old-typo-id",
+  } as unknown as UserProfile;
   assert.equal(resolveKidKeyForStudent(profile), null);
+});
+
+test("a teacher identity on a student-role profile (should never happen, but defensively) resolves to null, not a displayName fallback", () => {
+  const profile = studentProfile({ displayName: "Millaray Crider", presentationIdentityId: "jasper" });
+  assert.equal(resolveKidKeyForStudent(profile), null);
+});
+
+// --- requireKidKeyForStudent: the call-boundary guard that replaces the
+// silent-pass-through behavior at every real call site (dayPlans.ts,
+// placementTest.ts) — throws a controlled, actionable precondition error
+// instead of silently proceeding or falling back to a name-based guess. ---
+
+test("requireKidKeyForStudent returns the resolved kidKey when a stable identity is bootstrapped", () => {
+  assert.equal(requireKidKeyForStudent(studentProfile({ presentationIdentityId: "ro" })), "makaio");
+});
+
+test("requireKidKeyForStudent throws a controlled precondition error for a not-yet-bootstrapped account, regardless of a misleadingly on-the-nose displayName", () => {
+  const profile = studentProfile({ displayName: "Millaray Crider", presentationIdentityId: null });
+  assert.throws(() => requireKidKeyForStudent(profile), HttpsError);
+});
+
+test("requireKidKeyForStudent's error is understandable — it names the account (by displayName, for the reading teacher) and points at the fix, without ever using that name to derive identity", () => {
+  const profile = studentProfile({ displayName: "New Kid", presentationIdentityId: null });
+  try {
+    requireKidKeyForStudent(profile);
+    assert.fail("expected requireKidKeyForStudent to throw");
+  } catch (err) {
+    assert.ok(err instanceof HttpsError);
+    assert.equal((err as HttpsError).code, "failed-precondition");
+    assert.match((err as HttpsError).message, /New Kid/);
+    assert.match((err as HttpsError).message, /identity/i);
+  }
 });
 
 // --- Web-side registry parity (build-order step 9.1, section 6): web/ and
@@ -235,4 +277,25 @@ test("web/src/lib/placementTestItems.ts no longer exports an inferKidKey functio
   const filePath = join(__dirname, "..", "..", "..", "web", "src", "lib", "placementTestItems.ts");
   const source = readFileSync(filePath, "utf8");
   assert.doesNotMatch(source, /export function inferKidKey/);
+});
+
+// --- Old backend inferKidKey has no live runtime callers either
+// (build-order step 9.2) — the last one (resolveKidKeyForStudent's
+// displayName fallback) was removed in this step, and the function itself
+// was deleted from curriculum/placementTestItems.ts. This scans the
+// compiled functions/src tree directly (no cross-package path juggling
+// needed here, unlike the web scan above).
+
+test("curriculum/placementTestItems.ts no longer exports an inferKidKey function", () => {
+  const filePath = join(__dirname, "..", "..", "src", "curriculum", "placementTestItems.ts");
+  const source = readFileSync(filePath, "utf8");
+  assert.doesNotMatch(source, /export function inferKidKey/);
+});
+
+test("no file under functions/src calls inferKidKey(...) anymore", () => {
+  const functionsSrc = join(__dirname, "..", "..", "src");
+  const files = listFilesRecursive(functionsSrc).filter((f) => !f.endsWith(".test.ts"));
+  assert.ok(files.length > 10, "sanity check: functions/src should contain many files");
+  const offenders = files.filter((f) => /inferKidKey\s*\(/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(offenders, [], `these functions files still call inferKidKey(...): ${offenders.join(", ")}`);
 });
