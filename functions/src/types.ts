@@ -398,24 +398,38 @@ export interface Proposal<T = unknown> {
 export type AuditAction = "proposed" | "approved" | "rejected";
 
 /**
- * Two non-Proposal event families that write into the SAME `auditEvents`
+ * Non-Proposal event families that write into the SAME `auditEvents`
  * collection as the propose/approve/reject flow above (build-order step 9,
  * section 14: "use the existing audit architecture where practical rather
- * than creating a second unrelated audit system"). Deliberately NOT routed
- * through createProposal/approveProposal/rejectProposal (approvals.ts) —
- * neither a presentation-identity assignment nor a help-request lifecycle
- * event is a "propose a payload, get it reviewed, commit or reject it"
- * decision, so forcing them through that state machine would distort it
- * rather than reuse it. What IS reused: the one collection, the one record
- * shape, and the same family-scoped read rule.
+ * than creating a second unrelated audit system"; step 10 extends the same
+ * reasoning to the Quality Feedback Queue's lifecycle). Deliberately NOT
+ * routed through createProposal/approveProposal/rejectProposal
+ * (approvals.ts) — none of these is a "propose a payload, get it
+ * reviewed, commit or reject it" decision, so forcing them through that
+ * state machine would distort it rather than reuse it. What IS reused:
+ * the one collection, the one record shape, and the same family-scoped
+ * read rule.
  */
-export type AuditEventKind = ProposalKind | "presentationIdentityAssignment" | "helpRequest";
-export type AuditEventAction = AuditAction | "assigned" | "created" | "responded" | "escalated" | "resolved";
+export type AuditEventKind =
+  | ProposalKind
+  | "presentationIdentityAssignment"
+  | "helpRequest"
+  | "curriculumQualityIssue";
+export type AuditEventAction =
+  | AuditAction
+  | "assigned"
+  | "created"
+  | "responded"
+  | "escalated"
+  | "resolved"
+  | "severityChanged"
+  | "quarantined"
+  | "quarantineReleased";
 
 export interface AuditEvent {
   kind: AuditEventKind;
   action: AuditEventAction;
-  /** The proposal id for a Proposal-kind event; the assigned account's uid for "presentationIdentityAssignment"; the help request's doc id for "helpRequest". Always the primary subject of the event either way. */
+  /** The proposal id for a Proposal-kind event; the assigned account's uid for "presentationIdentityAssignment"; the help request's or quality issue's doc id otherwise. Always the primary subject of the event either way. */
   proposalId: string;
   /** Duplicated from the proposal (rather than looked up) so rules can scope reads by family without an extra fetch. */
   familyId: string;
@@ -1378,4 +1392,117 @@ export interface HelpRequest {
   resolvedAt?: Timestamp;
   resolvedByUid?: string;
   teacherNotes: HelpRequestTeacherNote[];
+}
+
+// --- Curriculum Quality Feedback Queue (build-order step 10) ---
+//
+// A structurally SEPARATE concern from Ask-a-Teacher (a student needing
+// help with correct material) and from certificationGate.ts's "Curriculum
+// Assistance Required" blocked_missing state (content that's simply
+// ABSENT). This is for suspected DEFECTS in curriculum content that
+// exists — a factual error, broken activity, bad answer key, unsafe
+// instruction, etc. Teacher authority is final: nothing here is ever
+// created automatically from a student's help request, and no AI ever
+// assigns an authoritative severity — see curriculumQualityIssues.ts.
+export type CurriculumQualityIssueCategory =
+  | "factual_error"
+  | "unclear_directions"
+  | "broken_activity"
+  | "incorrect_answer_key"
+  | "age_inappropriate"
+  | "unsafe_instruction"
+  | "source_problem"
+  | "broken_resource"
+  | "duplicate_or_conflicting"
+  | "other";
+
+/**
+ * Teacher-chosen/confirmed only — never AI-assigned (spec section 5). A
+ * safety-related category (unsafe_instruction, age_inappropriate) may be
+ * surfaced prominently in the UI, but the stored severity is always
+ * whatever the teacher selected, never inferred from the category.
+ */
+export type CurriculumQualityIssueSeverity = "low" | "medium" | "high" | "critical";
+
+export type CurriculumQualityIssueStatus = "open" | "resolved";
+
+export type CurriculumQualityResolutionAction =
+  | "corrected_content"
+  | "replaced_resource"
+  | "clarified_directions"
+  | "source_verified"
+  | "false_alarm"
+  | "accepted_as_is"
+  | "other";
+
+/**
+ * Stable references to what the issue concerns — never a full curriculum
+ * document. `helpRequestId` is set when a teacher deliberately promoted a
+ * student's Ask-a-Teacher request into a curriculum-defect determination
+ * (spec section 6) — that promotion is always an explicit, separate
+ * teacher action (createQualityIssue), never automatic.
+ */
+export interface CurriculumQualityIssueReference {
+  studentId?: string;
+  proposedDayId?: string;
+  blockId?: string;
+  objectiveId?: string;
+  helpRequestId?: string;
+}
+
+/**
+ * The exact, narrowest stable content version an issue/quarantine
+ * concerns — a per-kid, per-week content hash (contentHash.ts#
+ * hashWeekContent), the SAME hash the certification system already
+ * computes and compares, never a new hashing scheme and never the raw
+ * content itself. `weeklyCertificationId` is traceability only (which
+ * certification record this hash was captured from, when one exists) —
+ * the match key for quarantine enforcement is always `contentHash`
+ * itself, so a quarantine only ever blocks the EXACT flagged version,
+ * never a corrected one that replaces it, and never an entire subject/
+ * objective/quarter.
+ */
+export interface CurriculumContentVersionReference {
+  kidKey: PlacementKidKey;
+  quarter: Quarter;
+  week: number;
+  contentHash: string;
+  weeklyCertificationId: string | null;
+}
+
+/**
+ * A quarantine is state on its issue, not a separate record — this is
+ * what keeps "issue resolved" and "quarantine released" conceptually
+ * (and structurally) independent (spec section 9): resolving an issue
+ * never flips `active` to false, and releasing a quarantine never changes
+ * `status`. `active: false` with a `releasedAt` is a released quarantine,
+ * preserved for history, exactly like an approved Proposal is never
+ * deleted.
+ */
+export interface CurriculumQuarantine {
+  active: boolean;
+  quarantinedByUid: string;
+  quarantinedAt: Timestamp;
+  releasedByUid?: string;
+  releasedAt?: Timestamp;
+  releaseNote?: string;
+}
+
+export interface CurriculumQualityIssue {
+  familyId: string;
+  reporterUid: string;
+  reference: CurriculumQualityIssueReference;
+  /** null when this issue doesn't concern a specific content version (e.g. a general process complaint) — such an issue can never be quarantined, only resolved. */
+  contentVersion: CurriculumContentVersionReference | null;
+  category: CurriculumQualityIssueCategory;
+  severity: CurriculumQualityIssueSeverity;
+  description: string;
+  status: CurriculumQualityIssueStatus;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  resolvedAt?: Timestamp;
+  resolvedByUid?: string;
+  resolutionAction?: CurriculumQualityResolutionAction;
+  resolutionNote?: string;
+  quarantine: CurriculumQuarantine | null;
 }

@@ -139,6 +139,35 @@
         { "fieldPath": "studentId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "curriculumQualityIssues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "curriculumQualityIssues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "curriculumQualityIssues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyId", "order": "ASCENDING" },
+        { "fieldPath": "quarantine.active", "order": "ASCENDING" },
+        { "fieldPath": "contentVersion.kidKey", "order": "ASCENDING" },
+        { "fieldPath": "contentVersion.quarter", "order": "ASCENDING" },
+        { "fieldPath": "contentVersion.week", "order": "ASCENDING" },
+        { "fieldPath": "contentVersion.contentHash", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

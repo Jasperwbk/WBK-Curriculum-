@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../lib/firebase";
 import { AppShell } from "../components/AppShell";
@@ -18,6 +19,15 @@ const resolveFn = httpsCallable<{ helpRequestId: string; note?: string }, { help
   functions,
   "resolveHelpRequest"
 );
+const createQualityIssueFn = httpsCallable<
+  {
+    category: string;
+    severity: string;
+    description: string;
+    reference?: { studentId?: string; proposedDayId?: string; blockId?: string; objectiveId?: string; helpRequestId?: string };
+  },
+  { issueId: string }
+>(functions, "createQualityIssue");
 
 const CATEGORY_LABEL: Record<string, string> = {
   dont_understand: "Doesn't understand",
@@ -27,6 +37,14 @@ const CATEGORY_LABEL: Record<string, string> = {
   need_teacher: "Needs teacher",
   other: "Other",
 };
+
+const QUALITY_CATEGORY_OPTIONS = [
+  { value: "unclear_directions", label: "Unclear/misleading directions" },
+  { value: "factual_error", label: "Factual error" },
+  { value: "broken_activity", label: "Broken activity" },
+  { value: "incorrect_answer_key", label: "Bad answer key" },
+  { value: "other", label: "Other curriculum-quality problem" },
+];
 
 function formatTime(ts: { seconds: number } | undefined): string {
   if (!ts) return "";
@@ -51,6 +69,9 @@ export function HelpRequestsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [showResolved, setShowResolved] = useState(false);
+  const [flaggingId, setFlaggingId] = useState<string | null>(null);
+  const [flagDrafts, setFlagDrafts] = useState<Record<string, { category: string; severity: string; description: string }>>({});
+  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set());
 
   const studentName = (uid: string) => students.find((s) => s.uid === uid)?.displayName ?? uid;
 
@@ -87,6 +108,38 @@ export function HelpRequestsPage() {
       const note = (noteDrafts[id] ?? "").trim();
       await resolveFn({ helpRequestId: id, note: note || undefined });
       setNoteDrafts((d) => ({ ...d, [id]: "" }));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function startFlagging(r: HelpRequestRow) {
+    setFlagDrafts((d) => ({
+      ...d,
+      [r.id]: { category: "unclear_directions", severity: "medium", description: r.message },
+    }));
+    setFlaggingId(r.id);
+  }
+
+  async function submitFlag(r: HelpRequestRow) {
+    const draft = flagDrafts[r.id];
+    if (!draft) return;
+    setBusyId(r.id);
+    try {
+      await createQualityIssueFn({
+        category: draft.category,
+        severity: draft.severity,
+        description: draft.description,
+        reference: {
+          helpRequestId: r.id,
+          studentId: r.studentId,
+          proposedDayId: r.reference.proposedDayId,
+          blockId: r.reference.blockId,
+          objectiveId: r.reference.objectiveId,
+        },
+      });
+      setFlaggingId(null);
+      setFlaggedIds((s) => new Set(s).add(r.id));
     } finally {
       setBusyId(null);
     }
@@ -177,7 +230,92 @@ export function HelpRequestsPage() {
               >
                 Mark resolved
               </button>
+              {!flaggedIds.has(r.id) && flaggingId !== r.id && (
+                <button
+                  disabled={busyId === r.id}
+                  onClick={() => startFlagging(r)}
+                  className="rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+                  style={{ borderColor: "var(--status-critical)", color: "var(--status-critical)" }}
+                >
+                  Flag as curriculum issue
+                </button>
+              )}
             </div>
+
+            {flaggedIds.has(r.id) && (
+              <p className="text-xs" style={{ color: "var(--status-good)" }}>
+                Flagged —{" "}
+                <Link to="/quality" style={{ color: "var(--series-1)" }}>
+                  view in Curriculum Quality
+                </Link>
+                .
+              </p>
+            )}
+
+            {flaggingId === r.id && (
+              <div className="space-y-2 rounded-md border p-2" style={{ borderColor: "var(--status-critical)" }}>
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  This determines it's a curriculum defect, not just something to answer the student directly —
+                  creates a separate Curriculum Quality issue referencing this request.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <select
+                    value={flagDrafts[r.id]?.category ?? "unclear_directions"}
+                    onChange={(e) =>
+                      setFlagDrafts((d) => ({ ...d, [r.id]: { ...d[r.id], category: e.target.value } }))
+                    }
+                    className="rounded-md border px-2 py-1.5 text-sm"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-primary)" }}
+                  >
+                    {QUALITY_CATEGORY_OPTIONS.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={flagDrafts[r.id]?.severity ?? "medium"}
+                    onChange={(e) =>
+                      setFlagDrafts((d) => ({ ...d, [r.id]: { ...d[r.id], severity: e.target.value } }))
+                    }
+                    className="rounded-md border px-2 py-1.5 text-sm"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-primary)" }}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <textarea
+                  value={flagDrafts[r.id]?.description ?? ""}
+                  onChange={(e) =>
+                    setFlagDrafts((d) => ({ ...d, [r.id]: { ...d[r.id], description: e.target.value } }))
+                  }
+                  rows={2}
+                  className="w-full rounded-md border px-2 py-1.5 text-sm"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-primary)" }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    disabled={busyId === r.id}
+                    onClick={() => submitFlag(r)}
+                    className="rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                    style={{ background: "var(--status-critical)" }}
+                  >
+                    Create issue
+                  </button>
+                  <button
+                    disabled={busyId === r.id}
+                    onClick={() => setFlaggingId(null)}
+                    className="rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+                    style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

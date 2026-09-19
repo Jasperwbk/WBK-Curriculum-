@@ -36,3 +36,10 @@ export {
   escalateHelpRequest,
   resolveHelpRequest,
 } from "./identity/helpRequests";
+export {
+  createQualityIssue,
+  quarantineContentVersion,
+  releaseQuarantine,
+  resolveQualityIssue,
+  updateQualityIssueSeverity,
+} from "./curriculumQualityIssues";

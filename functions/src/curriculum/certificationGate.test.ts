@@ -215,3 +215,98 @@ test("D/E are never reachable without an explicit dayDesignation input, across e
     }
   }
 });
+
+// --- 9. Quarantine (build-order step 10) ---
+
+test("a quarantineReason blocks generation in GOVERNED mode, even when everything else would otherwise allow it (certified quarter+week)", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "certified",
+    hasContent: true,
+    familyWeekStatus: "certified",
+    quarantineReason: "Curriculum Assistance Required: this exact content version was flagged.",
+  });
+  assert.equal(decision.outcome, "blocked_quarantined");
+  assert.equal(decision.allow, false);
+  if (!decision.allow) {
+    assert.equal(decision.reason, "Curriculum Assistance Required: this exact content version was flagged.");
+  }
+});
+
+test("a quarantineReason blocks generation in LEGACY mode too — a defective version is just as real a hazard with no certification gate protecting it", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "legacy",
+    quarterStatus: "neverCertified",
+    hasContent: true,
+    familyWeekStatus: "neverCertified",
+    quarantineReason: "Curriculum Assistance Required: flagged content.",
+  });
+  assert.equal(decision.outcome, "blocked_quarantined");
+  assert.equal(decision.allow, false);
+});
+
+test("an explicit dayDesignation still wins over a quarantineReason — an alternative-package/non-instructional day doesn't use the flagged content at all", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "certified",
+    hasContent: true,
+    familyWeekStatus: "certified",
+    dayDesignation: { type: "nonInstructional", description: "Approved family PTO day." },
+    quarantineReason: "Curriculum Assistance Required: flagged content.",
+  });
+  assert.equal(decision.outcome, "non_instructional");
+  assert.equal(decision.allow, true);
+});
+
+test("omitting quarantineReason entirely (every pre-step-10 caller/test) behaves exactly as if there were no quarantine — never blocks by default", () => {
+  const decision = evaluateCertificationGate({
+    ...BASE,
+    governanceMode: "governed",
+    quarterStatus: "certified",
+    hasContent: true,
+    familyWeekStatus: "certified",
+  });
+  assert.equal(decision.outcome, "certified");
+  assert.equal(decision.allow, true);
+});
+
+test("a null or empty-string quarantineReason is treated identically to omitted — never blocks", () => {
+  for (const quarantineReason of [null, ""] as const) {
+    const decision = evaluateCertificationGate({
+      ...BASE,
+      governanceMode: "governed",
+      quarterStatus: "certified",
+      hasContent: true,
+      familyWeekStatus: "certified",
+      quarantineReason,
+    });
+    assert.equal(decision.outcome, "certified");
+    assert.equal(decision.allow, true);
+  }
+});
+
+test("blocked_quarantined is never reachable without an explicit quarantineReason input, across every governance/status combination", () => {
+  const modes: ("legacy" | "governed")[] = ["legacy", "governed"];
+  const statuses: ("certified" | "stale" | "neverCertified")[] = ["certified", "stale", "neverCertified"];
+  const boolCombos = [true, false];
+  for (const governanceMode of modes) {
+    for (const quarterStatus of statuses) {
+      for (const hasContent of boolCombos) {
+        for (const familyWeekStatus of statuses) {
+          const decision = evaluateCertificationGate({
+            ...BASE,
+            governanceMode,
+            quarterStatus,
+            hasContent,
+            familyWeekStatus,
+            quarantineReason: undefined,
+          });
+          assert.notEqual(decision.outcome, "blocked_quarantined");
+        }
+      }
+    }
+  }
+});

@@ -226,5 +226,20 @@ service cloud.firestore {
       allow read: if isOwner(resource.data.studentId) || isTeacherInFamily(resource.data.familyId);
       allow write: if false;
     }
+
+    // Curriculum Quality Feedback Queue (build-order step 10) — written
+    // only by createQualityIssue/quarantineContentVersion/
+    // resolveQualityIssue/releaseQuarantine/updateQualityIssueSeverity
+    // (functions/src/curriculumQualityIssues.ts, admin SDK, bypasses
+    // these rules), because creation needs a server-side resolution of
+    // the referenced content version (and, when linked, the referenced
+    // help request) that a client-side rule can't express. Teacher-only
+    // read, deliberately with NO owner-read clause at all — spec section
+    // 12: "Students should not browse the Quality Feedback Queue," full
+    // stop, unlike helpRequests above which a student reads their own of.
+    match /curriculumQualityIssues/{issueId} {
+      allow read: if isTeacherInFamily(resource.data.familyId);
+      allow write: if false;
+    }
   }
 }

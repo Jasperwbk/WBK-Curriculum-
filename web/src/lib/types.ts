@@ -76,3 +76,73 @@ export interface HelpRequestDoc {
   resolvedByUid?: string;
   teacherNotes: HelpRequestTeacherNote[];
 }
+
+// --- Curriculum Quality Feedback Queue (build-order step 10) — mirrors
+// functions/src/types.ts's CurriculumQualityIssue family; teacher/admin
+// only, never fetched or shown to a student (see the queue page). ---
+export type CurriculumQualityIssueCategory =
+  | "factual_error"
+  | "unclear_directions"
+  | "broken_activity"
+  | "incorrect_answer_key"
+  | "age_inappropriate"
+  | "unsafe_instruction"
+  | "source_problem"
+  | "broken_resource"
+  | "duplicate_or_conflicting"
+  | "other";
+
+export type CurriculumQualityIssueSeverity = "low" | "medium" | "high" | "critical";
+export type CurriculumQualityIssueStatus = "open" | "resolved";
+
+export type CurriculumQualityResolutionAction =
+  | "corrected_content"
+  | "replaced_resource"
+  | "clarified_directions"
+  | "source_verified"
+  | "false_alarm"
+  | "accepted_as_is"
+  | "other";
+
+export interface CurriculumQualityIssueReference {
+  studentId?: string;
+  proposedDayId?: string;
+  blockId?: string;
+  objectiveId?: string;
+  helpRequestId?: string;
+}
+
+export interface CurriculumContentVersionReference {
+  kidKey: string;
+  quarter: string;
+  week: number;
+  contentHash: string;
+  weeklyCertificationId: string | null;
+}
+
+export interface CurriculumQuarantine {
+  active: boolean;
+  quarantinedByUid: string;
+  quarantinedAt: { seconds: number; nanoseconds: number };
+  releasedByUid?: string;
+  releasedAt?: { seconds: number; nanoseconds: number };
+  releaseNote?: string;
+}
+
+export interface CurriculumQualityIssueDoc {
+  familyId: string;
+  reporterUid: string;
+  reference: CurriculumQualityIssueReference;
+  contentVersion: CurriculumContentVersionReference | null;
+  category: CurriculumQualityIssueCategory;
+  severity: CurriculumQualityIssueSeverity;
+  description: string;
+  status: CurriculumQualityIssueStatus;
+  createdAt: { seconds: number; nanoseconds: number };
+  updatedAt: { seconds: number; nanoseconds: number };
+  resolvedAt?: { seconds: number; nanoseconds: number };
+  resolvedByUid?: string;
+  resolutionAction?: CurriculumQualityResolutionAction;
+  resolutionNote?: string;
+  quarantine: CurriculumQuarantine | null;
+}

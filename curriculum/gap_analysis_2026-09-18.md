@@ -852,7 +852,90 @@ deployed**:
   function no longer exists there. No rules/index changes — this step
   touched only resolution logic, not any collection shape. Not deployed.
 
-Next up: step 10, once you've reviewed step 9.2.
+- **Step 10 — done, awaiting your review.** Curriculum Quality Feedback
+  Queue.
+
+  Audit confirmed the exact hook point: `contentHash.ts#hashWeekContent`
+  is already the SAME hash `certificationStatus.ts`'s
+  `computeFamilyWeekContent` computes and compares for every student on
+  every plan-generation call — no new hashing scheme was needed. New
+  `CurriculumQualityIssue` model (`types.ts`): stable references only
+  (studentId/proposedDayId/blockId/objectiveId/helpRequestId), a
+  `contentVersion` (kidKey/quarter/week/contentHash/weeklyCertificationId
+  — the narrowest stable reference, never the raw content), category (10
+  controlled values), teacher-chosen severity (4 values, never
+  AI-assigned — there is no AI call anywhere in this feature, verified by
+  a source-scan test), status, and an embedded `quarantine` object kept
+  structurally independent of `status` (section 9's "issue resolved" vs
+  "quarantine released" are separate booleans, never coupled).
+
+  New `curriculum/curriculumQuality.ts`: `resolveContentVersionReference`
+  (server-derives the exact hash from either a `proposedDayId` — preferring
+  its `sourceWeeklyCertificationId`'s own immutable historical hash — or a
+  direct kidKey/quarter/week location; the client names a LOCATION, never
+  a hash) and `findActiveQuarantineReason` (an exact 5-field equality match
+  — familyId/kidKey/quarter/week/contentHash — against active quarantines).
+  `certificationGate.ts` gained a 9th outcome, `blocked_quarantined`, via
+  one new optional `quarantineReason` param (defaults to "no quarantine"
+  when omitted, so all pre-existing tests/callers needed no changes) —
+  checked after `dayDesignation` but before the legacy/governed split, so
+  a quarantined exact version is blocked in BOTH modes. `dayPlans.ts`'s
+  `buildStudentContext` computes the quarantine check by reusing the hash
+  `familyWeekStatus` already computed (zero extra Firestore reads) and
+  passes it into the gate — since `generateProposedDays` already wraps
+  each student's `buildStudentContext` call in try/catch (built in step
+  4), a quarantine block surfaces as a clean per-student skip with zero
+  code changes needed there.
+
+  New `curriculumQualityIssues.ts` callables, all teacher-only:
+  `createQualityIssue` (optionally linking a help request's own
+  reference/studentId — never auto-created from one, per section 6: "the
+  teacher makes that determination"), `quarantineContentVersion`
+  (idempotent; the exact version already attached to the issue, never a
+  broader scope), `releaseQuarantine` (the only way a quarantine lifts;
+  independent of resolution), `resolveQualityIssue` (7 controlled
+  resolution actions; never touches `quarantine`), and
+  `updateQualityIssueSeverity`. All write into the existing `auditEvents`
+  collection (widened `AuditEventKind`/`AuditEventAction` unions, same
+  pattern as steps 9/9.1). Approved-history guarantees (section 13) hold
+  by construction — this feature's source never references `logs`,
+  `evidencePackets`, or `masteryRecords`, and never writes to
+  `proposedDays`/`familyWeeklyCertifications`, only reads them; proven by
+  two source-scan tests rather than by trusting a design description.
+
+  Teacher UI: new `CurriculumQualityPage` (`/quality`) — create issue
+  (with optional day/block/objective pin or direct kid/quarter/week
+  location), open/resolved list, quarantine/release/resolve/change-severity
+  actions — and a "Flag as curriculum issue" mini-form added to each
+  `HelpRequestsPage` card (section 6's worked example, wired for real: a
+  teacher reading "the directions don't make sense" can explicitly promote
+  it into a linked Quality issue). Firestore rules gained
+  `curriculumQualityIssues` — teacher-only read with deliberately NO
+  owner-read clause at all (section 12: students never browse this queue,
+  unlike `helpRequests` which a student reads their own of). Three new
+  composite indexes: two for the teacher queue view, one for the exact-hash
+  quarantine lookup (familyId + quarantine.active +
+  contentVersion.{kidKey,quarter,week,contentHash}).
+
+  31 new unit tests (342 -> 373): controlled category/severity/resolution-
+  action validation, the new `blocked_quarantined` gate outcome (blocks in
+  both legacy and governed mode, loses to an explicit dayDesignation, never
+  reachable without an explicit input — same discipline as the existing
+  dayDesignation tests), quarantine/release preconditions
+  (`assertHasQuarantinableContentVersion`, `isAlreadyQuarantined`,
+  `assertQuarantineActive` — all extracted as pure guards specifically for
+  this), sanitization (description/note/reference — helpRequestId is a
+  kept reference key), structural proofs that resolving never releases a
+  quarantine and releasing never resolves an issue (reading the actual
+  callable source, not just asserting the design intent), the audit/
+  teacher-only-mutation source-scan tests, and the approved-history/no-AI
+  source-scan tests described above. The callables' own Firestore
+  integration paths (the actual writes, the collision/quarantine queries,
+  rule enforcement) are NOT integration-tested — same disclosed limitation
+  as every callable in this codebase (no Firebase emulator in this
+  sandbox). Not deployed.
+
+Next up: step 11, once you've reviewed step 10.
 
 ---
 

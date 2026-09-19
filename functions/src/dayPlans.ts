@@ -19,6 +19,7 @@ import {
   findDesignationForKid,
   type DayDesignationLookup,
 } from "./curriculum/dayDesignation";
+import { findActiveQuarantineReason } from "./curriculum/curriculumQuality";
 import { resolveKidKeyForStudent, requireKidKeyForStudent } from "./identity/presentationIdentity";
 import type {
   CurriculumGovernanceMode,
@@ -177,6 +178,22 @@ export async function buildStudentContext(
     const weekContent = await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week);
     const designation = findDesignationForKid(dayDesignations, kidKey);
 
+    // Reuses the hash familyWeekStatus already computed for THIS kid
+    // (certificationStatus.ts's computeFamilyWeekContent) — no extra
+    // content read needed. Only checked when content actually exists;
+    // "no content at all" is blocked_missing's concern, not quarantine's.
+    const currentContentHash =
+      familyWeekStatus?.current.childContent.find((c) => c.kidKey === kidKey)?.contentHash ?? null;
+    const quarantineReason = currentContentHash
+      ? await findActiveQuarantineReason(
+          familyId,
+          kidKey,
+          quarterAndWeek.quarter,
+          quarterAndWeek.week,
+          currentContentHash
+        )
+      : null;
+
     const gate = evaluateCertificationGate({
       governanceMode,
       quarterStatus: familyQuarterStatus?.status ?? "neverCertified",
@@ -187,6 +204,7 @@ export async function buildStudentContext(
       kidKey,
       quarter: quarterAndWeek.quarter,
       week: quarterAndWeek.week,
+      quarantineReason,
     });
     gateOutcome = gate.outcome;
 

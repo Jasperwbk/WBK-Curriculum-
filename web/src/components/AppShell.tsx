@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: "/checkin", label: "Weekly check-in", end: false },
   { to: "/upload", label: "Upload", end: false },
   { to: "/help-requests", label: "Ask-a-Teacher", end: false },
+  { to: "/quality", label: "Curriculum Quality", end: false },
   { to: "/identity", label: "Identities", end: false },
 ];
 

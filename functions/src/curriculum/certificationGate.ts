@@ -44,10 +44,26 @@ import type { CurriculumGovernanceMode, DayDesignationType, PlacementKidKey, Qua
  *   8. blocked_missing      — governed, quarter AND week are certified,
  *                             but this specific kid has no content at all
  *                             — "Curriculum Assistance Required."
+ *   9. blocked_quarantined  — a teacher has flagged this EXACT content
+ *                             version (build-order step 10's Curriculum
+ *                             Quality Feedback Queue) as defective and
+ *                             quarantined it. Checked BEFORE the legacy/
+ *                             governed split — a quarantined version must
+ *                             never feed a new day in EITHER mode — but
+ *                             AFTER dayDesignation, since an explicit
+ *                             alternative-package/non-instructional day
+ *                             doesn't use the flagged content at all.
+ *                             Also "Curriculum Assistance Required" —
+ *                             reuses the same outcome family/messaging
+ *                             rather than a competing state.
  *
  * 6 and 7 can ONLY be reached via an explicit dayDesignation input — there
  * is no code path here that infers them from content merely being absent
- * (certificationGate.test.ts asserts this directly).
+ * (certificationGate.test.ts asserts this directly). Likewise, 9 can only
+ * be reached via an explicit quarantineReason input (computed by the
+ * caller from an actual quarantined CurriculumQualityIssue — see
+ * curriculum/curriculumQuality.ts#findActiveQuarantineReason) — this
+ * function never queries or infers quarantine state itself.
  */
 
 export type FamilyWeekStatus = "certified" | "stale" | "neverCertified";
@@ -58,6 +74,7 @@ export type CertificationGateOutcome =
   | "blocked_quarter"
   | "blocked_week"
   | "blocked_missing"
+  | "blocked_quarantined"
   | "alternative_package"
   | "non_instructional";
 
@@ -67,7 +84,7 @@ export type CertificationGateDecision =
       allow: true;
       description?: string;
     }
-  | { outcome: "blocked_quarter" | "blocked_week" | "blocked_missing"; allow: false; reason: string };
+  | { outcome: "blocked_quarter" | "blocked_week" | "blocked_missing" | "blocked_quarantined"; allow: false; reason: string };
 
 export interface DayDesignationInfo {
   type: DayDesignationType;
@@ -95,12 +112,26 @@ export function evaluateCertificationGate(params: {
   kidKey: PlacementKidKey;
   quarter: Quarter;
   week: number;
+  /**
+   * Set by the caller (build-order step 10) when this exact kid/quarter/
+   * week content version has an active quarantine — see
+   * curriculum/curriculumQuality.ts#findActiveQuarantineReason. Optional
+   * and defaults to "no quarantine" when omitted, so every pre-step-10
+   * caller/test continues to compile and behave identically.
+   */
+  quarantineReason?: string | null;
 }): CertificationGateDecision {
   // Explicit designation always wins — this is the ONLY path to 6 or 7.
   if (params.dayDesignation) {
     return params.dayDesignation.type === "alternativePackage"
       ? { outcome: "alternative_package", allow: true, description: params.dayDesignation.description }
       : { outcome: "non_instructional", allow: true, description: params.dayDesignation.description };
+  }
+
+  // A quarantined exact version must never feed a new day in EITHER
+  // legacy or governed mode — checked before the mode split below.
+  if (params.quarantineReason) {
+    return { outcome: "blocked_quarantined", allow: false, reason: params.quarantineReason };
   }
 
   if (params.governanceMode === "legacy") {
