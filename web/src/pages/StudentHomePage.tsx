@@ -4,6 +4,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../context/AuthContext";
 import { StudentShell } from "../components/StudentShell";
+import { AskForHelpWidget } from "../components/AskForHelpWidget";
 import { inferKidKey } from "../lib/placementTestItems";
 
 type Status = "loading" | "not_started" | "pending_review" | "done" | "not_applicable";
@@ -102,6 +103,10 @@ export function StudentHomePage() {
             </p>
           </div>
         )}
+
+        <div className="text-left">
+          <AskForHelpWidget />
+        </div>
       </div>
     </StudentShell>
   );

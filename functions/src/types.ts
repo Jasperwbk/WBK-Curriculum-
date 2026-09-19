@@ -108,10 +108,50 @@ export interface UserProfile {
   familyId: string;
   displayName: string;
   role: Role;
-  characterMapping: string | null; // "Kira" | "Rhoe" | "Nova" | null for teachers
+  // "Kira" | "Ro" | "Nova" | null — set only for STUDENT accounts by the
+  // seed script; always null for teachers. Purely a cosmetic display label
+  // (shown in parentheses next to a student's name) — never read for
+  // identity/security logic anywhere in the codebase. Superseded for that
+  // purpose by presentationIdentityId below (build-order step 9); kept
+  // as-is for backward compatibility with existing display code and
+  // existing account records, which this step does not touch.
+  characterMapping: string | null;
   gradeLabel: string | null; // students only
   assessmentBaseline: Record<string, string>; // subjectName -> free-text starting point
+  /**
+   * Stable presentation-identity ID (build-order step 9) — see
+   * identity/presentationIdentity.ts for the full registry and locked
+   * mapping (Cory -> "jasper", Sarah -> "celeste", Millaray -> "kira",
+   * Makaio -> "ro", Maizely -> "nova"). Set only by the explicit,
+   * teacher-initiated assignPresentationIdentity callable — never inferred
+   * from displayName, email, or characterMapping, and never auto-migrated.
+   * `null` (the default for every account created before this field
+   * existed, and for any new account until a teacher explicitly assigns
+   * one) means "not yet bootstrapped" — every consumer of this field must
+   * handle that case explicitly rather than assuming it's always set.
+   *
+   * PRESENTATION ONLY: this field is never authoritative for security or
+   * authorization. Every callable continues to derive authority from the
+   * authenticated uid, `familyId`, and `role` exactly as before — see
+   * util/auth.ts, unchanged by this step.
+   */
+  presentationIdentityId: PresentationIdentityId | null;
 }
+
+// --- Stable presentation identities (build-order step 9) ---
+//
+// Real people and presentation identities are deliberately separate
+// concepts. A presentation identity is a stable, lowercase, never-reused
+// identifier for how a family member is PRESENTED in the app's own voice
+// (Jasper's Morning Message, the Historical-Figure-Coloring host, teacher
+// labels, Ask-a-Teacher routing) — it carries no security meaning by
+// itself. See identity/presentationIdentity.ts for the registry (role,
+// display label, specialty areas, and — for a student identity — which
+// PlacementKidKey it corresponds to) and assignPresentationIdentity
+// (identity/presentationIdentity.ts) for the only way this is ever set.
+export type TeacherPresentationIdentityId = "jasper" | "celeste";
+export type StudentPresentationIdentityId = "kira" | "ro" | "nova";
+export type PresentationIdentityId = TeacherPresentationIdentityId | StudentPresentationIdentityId;
 
 export interface LogEntry {
   familyId: string;
@@ -357,9 +397,25 @@ export interface Proposal<T = unknown> {
 
 export type AuditAction = "proposed" | "approved" | "rejected";
 
+/**
+ * Two non-Proposal event families that write into the SAME `auditEvents`
+ * collection as the propose/approve/reject flow above (build-order step 9,
+ * section 14: "use the existing audit architecture where practical rather
+ * than creating a second unrelated audit system"). Deliberately NOT routed
+ * through createProposal/approveProposal/rejectProposal (approvals.ts) —
+ * neither a presentation-identity assignment nor a help-request lifecycle
+ * event is a "propose a payload, get it reviewed, commit or reject it"
+ * decision, so forcing them through that state machine would distort it
+ * rather than reuse it. What IS reused: the one collection, the one record
+ * shape, and the same family-scoped read rule.
+ */
+export type AuditEventKind = ProposalKind | "presentationIdentityAssignment" | "helpRequest";
+export type AuditEventAction = AuditAction | "assigned" | "created" | "responded" | "escalated" | "resolved";
+
 export interface AuditEvent {
-  kind: ProposalKind;
-  action: AuditAction;
+  kind: AuditEventKind;
+  action: AuditEventAction;
+  /** The proposal id for a Proposal-kind event; the assigned account's uid for "presentationIdentityAssignment"; the help request's doc id for "helpRequest". Always the primary subject of the event either way. */
   proposalId: string;
   /** Duplicated from the proposal (rather than looked up) so rules can scope reads by family without an extra fetch. */
   familyId: string;
@@ -1249,4 +1305,77 @@ export interface MasteryApplicationRecord {
   familyId: string;
   correct: boolean;
   appliedAt: Timestamp;
+}
+
+// --- Ask-a-Teacher help requests (build-order step 9) ---
+//
+// A structured student -> Celeste -> Jasper escalation path, NOT an
+// unrestricted AI tutor chat and NOT a chat/social feed. A small controlled
+// set of request categories (age-appropriate, no typing required) so even
+// Maizely can raise her hand. References the student's current work by
+// stable id rather than duplicating any curriculum content into the
+// request. See identity/helpRequests.ts for the callables that create,
+// respond to, resolve, and escalate a request, and for how this relates to
+// certificationGate.ts's "Curriculum Assistance Required" (blocked_missing)
+// state — that is a separate, system-level content-readiness gate on NEW
+// plan generation, not a live student help request; the two are unrelated
+// and coexist without conflict.
+export type HelpRequestCategory =
+  | "dont_understand"
+  | "directions_unclear"
+  | "think_content_is_wrong"
+  | "cannot_complete"
+  | "need_teacher"
+  | "other";
+
+export type HelpRequestStatus = "open" | "resolved";
+
+/** Who currently owns this request. Default routing is always "celeste" — escalation to "jasper" is a deliberate teacher action, never inferred from category or AI guesswork. */
+export type HelpRequestEscalationLevel = "celeste" | "jasper";
+
+/**
+ * Stable references to what the student was working on, so the teacher has
+ * enough context without the request duplicating any curriculum content.
+ * All optional — a request can be raised with no specific reference at all
+ * (e.g. a general "I need my teacher").
+ */
+export interface HelpRequestReference {
+  proposedDayId?: string;
+  blockId?: string;
+  objectiveId?: string;
+}
+
+/**
+ * One teacher note/response on a request — an array so a back-and-forth
+ * (first-level response, then an escalation note) stays fully visible
+ * rather than overwriting a single field. Never editable/deletable by a
+ * student (see firestore.rules' `helpRequests` — callable-write-only).
+ */
+export interface HelpRequestTeacherNote {
+  note: string;
+  byUid: string;
+  byRole: Role;
+  at: Timestamp;
+}
+
+export interface HelpRequest {
+  familyId: string;
+  studentId: string;
+  category: HelpRequestCategory;
+  /**
+   * The student's own words when they can/did type one, OR a canonical
+   * category label filled in server-side when absent (the no-typing path —
+   * required for Maizely, available to anyone). Never fabricated beyond
+   * that fixed per-category label; never an AI-authored summary.
+   */
+  message: string;
+  reference: HelpRequestReference;
+  status: HelpRequestStatus;
+  escalationLevel: HelpRequestEscalationLevel;
+  createdAt: Timestamp;
+  /** The student's own uid for a self-raised request, or the assisting teacher's uid for a teacher-assisted request (Maizely's flow) — see createHelpRequest. */
+  createdByUid: string;
+  resolvedAt?: Timestamp;
+  resolvedByUid?: string;
+  teacherNotes: HelpRequestTeacherNote[];
 }

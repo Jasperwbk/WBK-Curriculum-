@@ -15,6 +15,7 @@ function caller(
       characterMapping: null,
       gradeLabel: null,
       assessmentBaseline: {},
+      presentationIdentityId: null,
       ...overrides,
     },
   };

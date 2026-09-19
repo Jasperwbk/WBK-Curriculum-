@@ -15,7 +15,8 @@
       "displayName": "Teacher One",
       "role": "teacher",
       "characterMapping": null,
-      "gradeLabel": null
+      "gradeLabel": null,
+      "presentationIdentityId": "jasper"
     },
     {
       "email": "teacher2@example.com",
@@ -23,7 +24,8 @@
       "displayName": "Teacher Two",
       "role": "teacher",
       "characterMapping": null,
-      "gradeLabel": null
+      "gradeLabel": null,
+      "presentationIdentityId": "celeste"
     },
     {
       "email": "student1@example.com",
@@ -31,15 +33,17 @@
       "displayName": "Student One",
       "role": "student",
       "characterMapping": "Kira",
-      "gradeLabel": "5th grade"
+      "gradeLabel": "5th grade",
+      "presentationIdentityId": "kira"
     },
     {
       "email": "student2@example.com",
       "password": "REPLACE-WITH-A-STRONG-TEMP-PASSWORD",
       "displayName": "Student Two",
       "role": "student",
-      "characterMapping": "Rhoe",
-      "gradeLabel": "3rd grade"
+      "characterMapping": "Ro",
+      "gradeLabel": "3rd grade",
+      "presentationIdentityId": "ro"
     },
     {
       "email": "student3@example.com",
@@ -47,7 +51,8 @@
       "displayName": "Student Three",
       "role": "student",
       "characterMapping": "Nova",
-      "gradeLabel": "1st grade"
+      "gradeLabel": "1st grade",
+      "presentationIdentityId": "nova"
     }
   ]
 }

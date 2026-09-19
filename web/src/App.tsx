@@ -11,6 +11,8 @@ import { CheckInPage } from "./pages/CheckInPage";
 import { UploadPage } from "./pages/UploadPage";
 import { StudentHomePage } from "./pages/StudentHomePage";
 import { StudentPlacementPage } from "./pages/StudentPlacementPage";
+import { HelpRequestsPage } from "./pages/HelpRequestsPage";
+import { IdentitySetupPage } from "./pages/IdentitySetupPage";
 
 function Gate() {
   const { user, profile, loading } = useAuth();
@@ -51,6 +53,8 @@ function Gate() {
       <Route path="/placement" element={<PlacementTestPage />} />
       <Route path="/checkin" element={<CheckInPage />} />
       <Route path="/upload" element={<UploadPage />} />
+      <Route path="/help-requests" element={<HelpRequestsPage />} />
+      <Route path="/identity" element={<IdentitySetupPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

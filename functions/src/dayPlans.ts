@@ -19,7 +19,7 @@ import {
   findDesignationForKid,
   type DayDesignationLookup,
 } from "./curriculum/dayDesignation";
-import { inferKidKey } from "./curriculum/placementTestItems";
+import { resolveKidKeyForStudent } from "./identity/presentationIdentity";
 import type {
   CurriculumGovernanceMode,
   DayDesignationType,
@@ -168,7 +168,7 @@ export async function buildStudentContext(
   let dayDesignationType: DayDesignationType | null = null;
   let dayDesignationDescription: string | null = null;
   let usedWeekContent: string | null = null;
-  const kidKey = inferKidKey(profile.displayName);
+  const kidKey = resolveKidKeyForStudent(profile);
   if (kidKey && quarterAndWeek) {
     const weekContent = await loadWeekContent(familyId, kidKey, quarterAndWeek.quarter, quarterAndWeek.week);
     const designation = findDesignationForKid(dayDesignations, kidKey);

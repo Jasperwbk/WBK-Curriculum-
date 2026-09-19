@@ -23,6 +23,18 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 type Role = "teacher" | "student";
 
+/**
+ * The 5 locked stable presentation-identity ids (build-order step 9) —
+ * duplicated here rather than imported from functions/src/types.ts because
+ * this script is its own standalone TS project (own tsconfig/package, no
+ * shared build). Optional and explicit only: this script never infers a
+ * mapping from displayName/email, it only ever writes exactly what this
+ * config says. Omitting the field entirely (as every pre-step-9 config
+ * does) leaves an account's existing presentationIdentityId untouched on
+ * re-run — see the conditional spread below.
+ */
+type PresentationIdentityId = "jasper" | "celeste" | "kira" | "ro" | "nova";
+
 interface AccountConfig {
   email: string;
   password: string;
@@ -30,6 +42,7 @@ interface AccountConfig {
   role: Role;
   characterMapping: string | null;
   gradeLabel: string | null;
+  presentationIdentityId?: PresentationIdentityId;
 }
 
 interface SeedConfig {
@@ -109,6 +122,11 @@ async function main() {
           characterMapping: account.role === "student" ? account.characterMapping : null,
           gradeLabel: account.role === "student" ? account.gradeLabel : null,
           assessmentBaseline: {},
+          // Only written when the config explicitly names one — omitting
+          // it (every pre-step-9 config) leaves an already-bootstrapped
+          // account's presentationIdentityId exactly as it was, since this
+          // is a merge:true write and an absent key here is never sent.
+          ...(account.presentationIdentityId ? { presentationIdentityId: account.presentationIdentityId } : {}),
         },
         { merge: true }
       );

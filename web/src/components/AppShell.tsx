@@ -11,6 +11,8 @@ const NAV_ITEMS = [
   { to: "/placement", label: "Placement test", end: false },
   { to: "/checkin", label: "Weekly check-in", end: false },
   { to: "/upload", label: "Upload", end: false },
+  { to: "/help-requests", label: "Ask-a-Teacher", end: false },
+  { to: "/identity", label: "Identities", end: false },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

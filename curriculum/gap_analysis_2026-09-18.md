@@ -653,7 +653,94 @@ deployed**:
   (`families/{familyId}` write narrowed to Cloud-Function-only); no new
   indexes. Not deployed.
 
-Next up: step 9, once you've reviewed step 8.1.
+- **Step 9 — done, awaiting your review.** Ask-a-Teacher + stable
+  presentation identities.
+
+  Audit first: confirmed `inferKidKey()` (`curriculum/placementTestItems.ts`)
+  — display-name-substring inference — was the one production identity
+  mechanism the spec targeted, with a single backend call site
+  (`dayPlans.ts`'s `buildStudentContext`); found it duplicated client-side
+  in `web/src/lib/placementTestItems.ts` with 7 call sites (StudentHomePage,
+  StudentPlacementPage, CheckInPage x2, PlacementTestPage x2, UploadPage x2)
+  — those are pre-existing, unrelated-feature UI logic (which self-service
+  screens to show), left untouched as out of this step's scope; noted
+  explicitly rather than silently expanded into. Confirmed `characterMapping`
+  is cosmetic-only (never read for identity/security) and found/fixed a
+  real naming drift: its doc comment said "Rhoe" (also present in
+  `scripts/accounts.config.example.json`) where the locked model says "Ro"
+  for Makaio. Located "Curriculum Assistance Required" as
+  `certificationGate.ts`'s `blocked_missing` outcome — a system-level
+  content-readiness gate on NEW plan generation, unrelated to a student's
+  live help request; no competing-system conflict, so both coexist as
+  designed without further reconciliation work.
+
+  Stable identity model: `PresentationIdentityId` (`"jasper" | "celeste" |
+  "kira" | "ro" | "nova"`) and `UserProfile.presentationIdentityId` added
+  to `types.ts`; the registry (role, display label, specialty areas,
+  per-student `PlacementKidKey`) lives in new
+  `identity/presentationIdentity.ts`. Bootstrap is the new
+  `assignPresentationIdentity` callable — teacher-initiated, deterministic
+  (caller supplies both target account and identity explicitly, never
+  inferred), idempotent (re-assigning the same value is a no-op), rejects a
+  role mismatch or a collision with another account already holding the
+  same identity, and writes an `auditEvents` record. Never auto-run.
+  `seedAccounts.ts`'s `AccountConfig` gained an optional
+  `presentationIdentityId` field (only written when a config explicitly
+  names one, so re-running seed never clobbers an already-bootstrapped
+  account) as the offline/config-driven path; the callable is the online
+  path for retrofitting already-existing accounts. `dayPlans.ts` now calls
+  `resolveKidKeyForStudent` (prefers `presentationIdentityId`, falls back to
+  the legacy `inferKidKey` only when unset) instead of `inferKidKey`
+  directly — existing un-bootstrapped accounts keep working exactly as
+  before. Found and fixed a related latent gap while in this code:
+  `submitPlacementTest`/`submitPlacementResponses` accepted a
+  client-supplied `kidKey` with no check that it matched the target
+  account — added `assertKidKeyMatchesTarget`, enforced only when the
+  target's own kidKey is actually resolvable, so no currently-working
+  account is newly blocked.
+
+  Ask-a-Teacher: new `HelpRequest` model in `types.ts` (category, message,
+  stable `reference` to proposedDayId/blockId/objectiveId — never
+  duplicated curriculum content, status, escalationLevel, teacherNotes,
+  createdBy/resolvedBy) and four callables in new
+  `identity/helpRequests.ts`: `createHelpRequest` (student-self or
+  teacher-assisted via the existing `requireOwnerOrTeacher`, always routes
+  to `"celeste"` by default, canned per-category message when no text is
+  typed — the Maizely-compatible no-typing flow), `respondToHelpRequest`,
+  `escalateHelpRequest` (teacher-only, deliberate action, never automatic),
+  and `resolveHelpRequest` (teacher-only, no owner fallback — a student can
+  never self-resolve). All four write to the same `auditEvents` collection
+  as the existing propose/approve/reject flow (widened `AuditEventKind`/
+  `AuditEventAction` unions rather than forcing help requests through
+  `approvals.ts`'s propose-then-commit state machine, which doesn't fit a
+  ticket lifecycle). No AI call anywhere in this feature — deterministic
+  structured routing only, verified by a source-scan test asserting no
+  AI/model SDK reference in `helpRequests.ts`. `firestore.rules` gained a
+  `helpRequests` collection (owner-or-teacher read, callable-only write);
+  `firestore.indexes.json` gained two composite indexes for the teacher
+  queue and a student's own history.
+
+  Minimal UI: `AskForHelpWidget` (category buttons — clicking one submits
+  immediately, no typing required for any category, with an optional
+  "Something else" text box) embedded in the existing `StudentHomePage`;
+  accepts an optional `reference` prop so a future LearningBlock "Ask for
+  Help" action can pass the current day/block/objective without redesign.
+  New `HelpRequestsPage` (teacher queue, grouped by escalation level,
+  respond/resolve/escalate) and `IdentitySetupPage` (assigns
+  presentationIdentityId per family member via a plain dropdown — never
+  pre-selected from a name) at `/help-requests` and `/identity`.
+
+  30 new unit tests (299 -> 329), all pure-logic (registry integrity,
+  no-name/email-parsing guarantees, role-mismatch/collision preconditions,
+  idempotent bootstrap, category validation, no-typing-flow message
+  resolution, reference sanitization, deterministic Celeste-first routing,
+  no-AI-SDK source scan) — the callables' own Firestore-integration paths
+  (the actual write, the collision query, rule enforcement) are NOT
+  integration-tested, same disclosed limitation as every other callable in
+  this codebase (no Firebase emulator in this sandbox). One rules change
+  (new `helpRequests` collection) and two new indexes. Not deployed.
+
+Next up: step 10, once you've reviewed step 9.
 
 ---
 

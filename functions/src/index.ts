@@ -29,3 +29,10 @@ export {
   recordHistoricalFigureRetention,
 } from "./evidencePackets";
 export { updateFamilyClosingWords } from "./familySettings";
+export { assignPresentationIdentity } from "./identity/presentationIdentity";
+export {
+  createHelpRequest,
+  respondToHelpRequest,
+  escalateHelpRequest,
+  resolveHelpRequest,
+} from "./identity/helpRequests";

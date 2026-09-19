@@ -3,6 +3,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { requireCaller, requireOwnerOrTeacher, requireTeacher } from "./util/auth";
 import { recordMasteryResult } from "./mastery";
 import { PLACEMENT_TEST_ITEMS } from "./curriculum/placementTestItems";
+import { resolveKidKeyForStudent } from "./identity/presentationIdentity";
 import type {
   PlacementItemResult,
   PlacementKidKey,
@@ -24,6 +25,30 @@ async function loadTarget(familyId: string, userId: string): Promise<UserProfile
     throw new HttpsError("invalid-argument", "userId does not belong to this family.");
   }
   return profile;
+}
+
+/**
+ * Defensive cross-check (build-order step 9 finding, section 16: "do not
+ * trust client-supplied studentId... derive authoritative identity from
+ * authenticated records") — `kidKey` was previously accepted from the
+ * client with no check that it actually matches the target account, which
+ * could score a placement test against the wrong catalog/objective-id
+ * namespace while writing results under the wrong userId. Only enforced
+ * when the target's own kidKey can actually be resolved (a bootstrapped
+ * presentationIdentityId, or the legacy display-name fallback) — an
+ * unresolvable target (e.g. a display name that doesn't match any known
+ * pattern and no presentationIdentityId yet) is left exactly as
+ * permissive as before this check existed, so no currently-working
+ * account is newly blocked by this addition.
+ */
+function assertKidKeyMatchesTarget(target: UserProfile, kidKey: PlacementKidKey): void {
+  const resolved = resolveKidKeyForStudent(target);
+  if (resolved && resolved !== kidKey) {
+    throw new HttpsError(
+      "invalid-argument",
+      `kidKey "${kidKey}" does not match this student's own identity ("${resolved}").`
+    );
+  }
 }
 
 function parseDate(date: string | undefined): Timestamp {
@@ -72,7 +97,8 @@ export const submitPlacementTest = onCall<SubmitPlacementTestRequest>(async (req
   }
 
   const familyId = caller.profile.familyId;
-  await loadTarget(familyId, userId);
+  const target = await loadTarget(familyId, userId);
+  assertKidKeyMatchesTarget(target, kidKey);
 
   const catalog = PLACEMENT_TEST_ITEMS[kidKey];
   const catalogById = new Map(catalog.map((i) => [i.id, i]));
@@ -230,7 +256,8 @@ export const submitPlacementResponses = onCall<SubmitPlacementResponsesRequest>(
   }
 
   const familyId = caller.profile.familyId;
-  await loadTarget(familyId, userId);
+  const target = await loadTarget(familyId, userId);
+  assertKidKeyMatchesTarget(target, kidKey);
 
   const catalog = PLACEMENT_TEST_ITEMS[kidKey];
   const catalogById = new Map(catalog.map((i) => [i.id, i]));

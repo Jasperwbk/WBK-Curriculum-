@@ -15,6 +15,8 @@ export interface UserProfile {
   characterMapping: string | null;
   gradeLabel: string | null;
   assessmentBaseline: Record<string, string>;
+  /** Stable presentation-identity id (build-order step 9) — "jasper" | "celeste" | "kira" | "ro" | "nova" | null. See lib/presentationIdentity.ts. */
+  presentationIdentityId: string | null;
 }
 
 interface AuthContextValue {
